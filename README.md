@@ -1,4 +1,4 @@
-# Docling Table Enricher
+# Docling Multipage Tables
 
 A robust, heuristic-based post-processor for [Docling](https://github.com/DS4SD/docling) that detects and merges tables split across multiple pages in PDF documents.
 

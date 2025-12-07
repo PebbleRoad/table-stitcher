@@ -1,0 +1,6 @@
+Date,Description,Environment,Reference
+12/09,302 Redirect from https://services2.imda.gov.sg/CTOaaS/Category/ads_14/ built-environment-digital-platform to https://services2.imda.gov.sg/CTOaaS/Category/93/built -environment-digital-platform--bedp-,PROD,Email request from Fernando (email subject: Request for Redirect Mechanism in Prod on Platform Level)
+16/09,RDSDBpasswordupdate,UAT,RITM02678426
+16/09,RDSDBpasswordupdate,DEV,RITM02678426
+17/09,Enforce SSL for DBconnection,DEV&UAT,RITM02678426
+17/09,EnforceSSLforDBconnection&RDSDBpassword update,PROD,RITM02659653

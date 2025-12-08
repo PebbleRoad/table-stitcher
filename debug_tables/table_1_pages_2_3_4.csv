@@ -1,12 +1,6 @@
-Date,Application,Version,Environment,Content
-02/09,CTOaaS,0.160,UAT,0.159 to 0.160 https://jira.ship.gov.sg/browse/CTOAAQZASF-960 https://jira.ship.gov.sg/browse/CTOAAQZASF-990
-02/09,CTOaaS,0.161,UAT,0.160 to 0.161 https://jira.ship.gov.sg/browse/CTOAAQZASF-960 https://jira.ship.gov.sg/browse/CTOAAQZASF-990
-02/09,CTOaaS,0.161,PROD,0.157 to 0.161 https://jira.ship.gov.sg/browse/CTOAAQZASF-960 https://jira.ship.gov.sg/browse/CTOAAQZASF-990
-03/09,CTOaaS,0.162,UAT,0.161 to 0.162 https://jira.ship.gov.sg/browse/CTOAAQZASF-960 https://jira.ship.gov.sg/browse/CTOAAQZASF-990
-03/09,CTOaaS,0.162,PROD,0.161 to 0.162 https://jira.ship.gov.sg/browse/CTOAAQZASF-960 https://jira.ship.gov.sg/browse/CTOAAQZASF-990
-06/09,CTOaaS,0.163,UAT,0.162 to 0.163 https://jira.ship.gov.sg/browse/CTOAAQZASF-990 https://jira.ship.gov.sg/browse/CTOAAQZASF-987 https://jira.ship.gov.sg/browse/CTOAAQZASF-1001
-09/09,CTOaaS,0.164,UAT,0.163 to 0.164 https://jira.ship.gov.sg/browse/CTOAAQZASF-990 https://jira.ship.gov.sg/browse/CTOAAQZASF-987 https://jira.ship.gov.sg/browse/CTOAAQZASF-1001
-09/09,CTOaaS,0.165,UAT,0.164 to 0.165 https://jira.ship.gov.sg/browse/CTOAAQZASF-990 https://jira.ship.gov.sg/browse/CTOAAQZASF-987 https://jira.ship.gov.sg/browse/CTOAAQZASF-1001
-09/09,CTOaaS,0.165,PROD,"0.162 to 0.165 https://jira.ship.gov.sg/browse/CTOAAQZASF-990 https://jira.ship.gov.sg/browse/CTOAAQZASF-987
-https://jira.ship.gov.sg/browse/CTOAAQZASF-1001"
-30/09,CTOaaS,0.166,UAT,0.165 to 0.166 https://jira.ship.gov.sg/browse/CTOAAQZASF-975 https://jira.ship.gov.sg/browse/CTOAAQZASF-949 https://jira.ship.gov.sg/browse/CTOAAQZASF-1006 https://jira.ship.gov.sg/browse/CTOAAQZASF-1010
+Date,Application,Version,Environment,Content/Reference
+08/01,CTOaaS,0.181,UAT,0.179 to 0.181 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1062 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1044 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1055
+23/01,CTOaaS,0.182,UAT,0.181 to 0.182 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1037 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1063 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1045 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1046 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1056 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1055 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1051 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1052 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1054 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1062 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1059
+28/01,CTOaaS,0.183,UAT,"0.182 to 0.183
+VAPT+SCRtickets CTOAAQZASF-1069 CTOAAQZASF-1070 CTOAAQZASF-1071 CTOAAQZASF-1072 CTOAAQZASF-1073 CTOAAQZASF-1074 CTOAAQZASF-1075 CTOAAQZASF-1076 CTOAAQZASF-1077 CTOAAQZASF-1078 CTOAAQZASF-1079 CTOAAQZASF-1080 CTOAAQZASF-1081 CTOAAQZASF-1082 CTOAAQZASF-1083 Newapplication features https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1045 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1046 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1047 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1056 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1059 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1051
+https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1052 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1053 https://sgtechstack.atlassian.net/browse/CTOAAQZASF-1054"

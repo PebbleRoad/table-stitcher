@@ -274,7 +274,3 @@ print(__version__)  # "0.1.0"
 - **Page size estimation:** For geometry hints, we assume A4 page height (842 points) for normalization. This works for most documents but may be slightly off for non-standard page sizes.
 
 ---
-
-## License
-
-MIT

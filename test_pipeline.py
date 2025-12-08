@@ -1,8 +1,8 @@
 """
-Test Pipeline: Verifies that enriched documents serialize correctly to JSON.
+Test Pipeline: Verifies that enriched documents serialize correctly.
 
 This tests the full round-trip:
-  PDF → DoclingDocument → enrich_document() → JSON serialization
+  PDF → DoclingDocument → enrich_document() → JSON/HTML serialization
 
 Usage:
   python test_pipeline.py "your_report.pdf"
@@ -82,6 +82,18 @@ def run_test(pdf_filename: str):
     with open(json_path, "w") as f:
         f.write(doc.model_dump_json(exclude_none=True, indent=2))
     log.info(f"Full JSON saved to: {json_path}")
+    
+    # 8. Export to HTML using Docling's native serialization
+    html_path = input_path.with_suffix(".enriched.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(doc.export_to_html())
+    log.info(f"HTML saved to: {html_path}")
+    
+    # 9. Export to Markdown for comparison
+    md_path = input_path.with_suffix(".enriched.md")
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(doc.export_to_markdown())
+    log.info(f"Markdown saved to: {md_path}")
     
     return doc
 

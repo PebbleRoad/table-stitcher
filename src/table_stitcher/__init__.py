@@ -26,15 +26,17 @@ import time
 import logging
 from typing import Any, Optional
 
-from .models import MultiPageConfig, LogicalTable
+from .models import MultiPageConfig, LogicalTable, TableMeta
 from .merger import merge_multipage_tables
 from .adapters.base import TableStitcherAdapter
 
 __version__ = "0.2.0"
 __all__ = [
     "stitch_tables",
+    "extract_table_meta",
     "TableStitcher",
     "MultiPageConfig",
+    "TableMeta",
     "StitchingError",
     "TableStitcherAdapter",
     "__version__",
@@ -280,3 +282,39 @@ def stitch_tables(
             "Invalid configuration, returning original document"
         )
         return doc
+
+
+def extract_table_meta(
+    doc: Any,
+    config: Optional[MultiPageConfig] = None,
+) -> list:
+    """
+    Extract table metadata without merging — useful for analysis.
+
+    Convenience function that uses the Docling adapter by default.
+    Returns a list of ``TableMeta`` objects describing each table fragment.
+
+    Args:
+        doc: The input DoclingDocument (already converted from PDF).
+        config: Optional configuration overrides. Uses sensible defaults if None.
+
+    Returns:
+        List of TableMeta objects for each table in the document.
+
+    Example:
+        >>> from table_stitcher import extract_table_meta
+        >>> metas = extract_table_meta(doc)
+        >>> for m in metas:
+        ...     print(f"Table {m.idx}: {m.width} cols, page {m.start_page}")
+    """
+    try:
+        from .adapters.docling import DoclingAdapter
+    except ModuleNotFoundError as e:
+        if "docling_core" in str(e):
+            raise ImportError(
+                "The Docling adapter requires docling-core. "
+                "Install it with: pip install table-stitcher[docling]"
+            ) from e
+        raise
+
+    return DoclingAdapter().extract(doc, config or MultiPageConfig())

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "table-stitcher"
+version = "0.2.0"
+description = "Reassemble tables split across page boundaries in PDF extraction"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "PebbleRoad" },
+]
+keywords = ["pdf", "tables", "docling", "extraction", "multipage"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing",
+]
+dependencies = [
+    "pandas>=1.5",
+]
+
+[project.optional-dependencies]
+docling = [
+    "docling>=2.0",
+    "docling-core>=2.0",
+]
+dev = [
+    "pytest>=7.0",
+    "docling>=2.0",
+    "docling-core>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/pebbleroad/table-stitcher"
+Repository = "https://github.com/pebbleroad/table-stitcher"
+Issues = "https://github.com/pebbleroad/table-stitcher/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/table_stitcher"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

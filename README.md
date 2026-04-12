@@ -1,276 +1,275 @@
-# Docling Multipage Tables
+# Table Stitcher
 
-A robust, heuristic-based post-processor for [Docling](https://github.com/DS4SD/docling) that detects and merges tables split across multiple pages in PDF documents.
+Reassemble tables split across page boundaries in PDF extraction.
 
-## The Problem
+PDF extraction tools often fragment a single logical table into multiple pieces when it spans pages. **Table Stitcher** detects these fragments and merges them back into coherent tables.
 
-PDF extraction libraries often treat a single logical table as multiple fragmented tables when it spans page boundaries. This leads to:
-
-* **Data Orphans:** A table body continues on Page N+1 without headers.
-* **Header Orphans:** A table header appears at the bottom of Page N, but data starts on Page N+1.
-* **Spillover Content:** Long text (URLs, references) gets cut off at the page margin and appears as a separate 1-column "table" on the next page.
-* **Split Cells:** Content from a single cell is fragmented across page breaks.
-
-**Docling Table Enricher** fixes these issues by analyzing the document *after* conversion and modifying the `DoclingDocument` object in-place to unify these fragments.
+**Parser-agnostic core** with a clean adapter interface. Ships with a [Docling](https://github.com/DS4SD/docling) adapter out of the box.
 
 ---
+
+## What It Fixes
+
+- **Data orphans** -- table body continues on the next page without headers
+- **Header orphans** -- headers at the bottom of one page, data on the next
+- **Spillover content** -- URLs or long text cut at page margins, appearing as separate 1-column "tables"
+- **Split cells** -- cell content fragmented across page breaks
 
 ## Installation
 
-This is a local Python module. Ensure your project structure looks like this:
-
-```text
-/your_project/
-├── docling_table_enricher/
-│   ├── __init__.py
-│   ├── merger.py
-│   ├── injector.py
-│   └── models.py
-├── main.py
-└── requirements.txt
+**From PyPI** (once published):
+```bash
+pip install table-stitcher[docling]    # With Docling support
+pip install table-stitcher             # Core only (for custom adapters)
 ```
 
-**Dependencies:**
+**From source:**
+```bash
+git clone https://github.com/pebbleroad/table-stitcher.git
+cd table-stitcher
+pip install -e ".[docling]"            # Editable install with Docling
+```
 
-* `docling`
-* `docling-core`
-* `pandas`
+## Quick Start
 
----
-
-## Usage
-
-### Basic Usage
-
-The enricher fits seamlessly into a standard Docling pipeline:
+### Docling (one-liner)
 
 ```python
 from docling.document_converter import DocumentConverter
-from docling_table_enricher import enrich_document
+from table_stitcher import stitch_tables
 
-# 1. Standard Docling Conversion
 converter = DocumentConverter()
-result = converter.convert("report.pdf")
-doc = result.document
-
-# 2. Enrich Tables
-doc = enrich_document(doc)
-
-# 3. Export as usual
-print(doc.export_to_markdown())
+doc = converter.convert("report.pdf").document
+doc = stitch_tables(doc)
 ```
 
-### Configuration
-
-You can tune the merging behavior using `MultiPageConfig`:
+### With Configuration
 
 ```python
-from docling_table_enricher import enrich_document, MultiPageConfig
+from table_stitcher import stitch_tables, MultiPageConfig
 
 config = MultiPageConfig(
-    # Page adjacency: only merge tables on consecutive pages
-    max_page_gap=1,
-    
-    # Width tolerance: how much column counts can differ
-    max_width_difference=2,
-    
-    # Header similarity for "repeated header" detection
-    header_sim_strict=0.6,
-    
-    # Row similarity fallback threshold
-    row_sim_threshold=0.3,
-    
-    # Character used to join split content
-    stitch_separator="\n",
-    
-    # Spillover detection: if False (default), any 1-column headerless
-    # fragment is treated as spillover. If True, requires URL/ticket patterns.
-    spillover_require_content_check=False,
+    max_page_gap=1,              # Only merge tables on consecutive pages
+    max_width_difference=2,      # Column count tolerance
+    header_sim_strict=0.6,       # Threshold for repeated header detection
+    stitch_separator="\n",       # Join character for split content
 )
 
-doc = enrich_document(doc, config=config)
+doc = stitch_tables(doc, config=config)
 ```
 
-### Custom Header Tokens
-
-For domain-specific documents, you can customize the tokens used to identify header rows:
+### Custom Parser (adapter pattern)
 
 ```python
-config = MultiPageConfig(
-    headerish_tokens={
-        "name", "date", "status", "amount", "description",
-        "your", "custom", "domain", "terms"
-    }
-)
-```
+from typing import Any, List
+from table_stitcher import TableStitcher, MultiPageConfig
+from table_stitcher.adapters.base import TableStitcherAdapter
+from table_stitcher.models import TableMeta, LogicalTable
 
----
+class MyParserAdapter:
+    def extract(self, doc, cfg: MultiPageConfig) -> List[TableMeta]:
+        """Read tables from your document format into TableMeta objects."""
+        ...
+
+    def inject(self, doc, logical_tables: List[LogicalTable]):
+        """Write merged results back into your document format."""
+        ...
+
+stitcher = TableStitcher(adapter=MyParserAdapter())
+doc = stitcher.stitch(doc)
+```
 
 ## How It Works
 
-The library operates on three key principles:
+The merge engine uses three principles:
 
-### Principle 1: Sequential Merging
+### 1. Sequential Merging
 
-A headerless table fragment can only continue the **immediately preceding table** in document order. This prevents false merges between unrelated tables that happen to have the same column count.
+A headerless fragment only merges with its immediate predecessor in document order. This prevents false merges between unrelated tables that happen to share column counts.
 
-```
-Table A (page 2) → Table B (page 3, headerless) → Table C (page 4, headerless)
-        └──────────────────┴────────────────────────────┘
-                     Only adjacent pairs merge
-```
+### 2. Width Matching
 
-### Principle 2: Width Matching
-
-Same column count = same table structure. This is the primary signal for determining if two fragments belong together.
+Same column count = same table structure. This is the primary merge signal.
 
 | Fragment A | Fragment B | Decision |
-|------------|------------|----------|
-| 5 columns  | 5 columns  | ✅ Likely same table |
-| 5 columns  | 4 columns  | ⚠️ Check other signals |
-| 5 columns  | 1 column   | 🔄 Spillover detection |
+|---|---|---|
+| 5 columns | 5 columns | Likely same table |
+| 5 columns | 4 columns | Check other signals |
+| 5 columns | 1 column | Spillover detection |
 
-### Principle 3: Spillover Detection
+### 3. Spillover Detection
 
-When a multi-column table is followed by a 1-column headerless fragment, that fragment is almost certainly "spillover" — content that overflowed from the last cell. This content is stitched back into the appropriate cell.
+A 1-column headerless fragment following a multi-column table is almost certainly content that overflowed from the last cell. It gets stitched back automatically.
+
+## Architecture
 
 ```
-Page 3:                          Page 4:
-┌────┬────┬──────────────┐      ┌─────────────────────────┐
-│Date│Vers│ Content      │      │ https://continued.url   │
-├────┼────┼──────────────┤      └─────────────────────────┘
-│1/1 │1.0 │ https://url1 │           ↓ Spillover
-│1/2 │1.1 │ https://url2 │      Stitched into Content cell
-└────┴────┴──────────────┘      of the 1/2 row
+table_stitcher/
+  __init__.py         # Public API: stitch_tables(), TableStitcher
+  models.py           # MultiPageConfig, TableMeta, LogicalTable
+  merger.py           # Core engine (parser-agnostic)
+  adapters/
+    base.py           # TableStitcherAdapter protocol
+    docling.py        # Docling implementation
 ```
 
----
+The adapter protocol has exactly **two methods**:
 
-## Pipeline Stages
+| Method | Purpose |
+|---|---|
+| `extract(doc, cfg)` | Read table fragments from your document -> `List[TableMeta]` |
+| `inject(doc, logical_tables)` | Write merged results back into your document |
 
-### Stage 1: Metadata Extraction
-
-Extract structural information from each table fragment:
-- Column count and headers
-- Page location
-- Header vs. data classification
-- Orphan detection
-
-### Stage 2: Merge Decision
-
-Using Union-Find, group fragments that should merge based on:
-1. Sequential adjacency (document order)
-2. Width matching
-3. Spillover detection
-4. Header similarity (for repeated headers)
-
-### Stage 3: Table Building
-
-Reconstruct merged tables:
-- Combine data rows
-- Stitch spillover content into appropriate cells
-- Clean up malformed headers
-
-### Stage 4: Document Injection
-
-Update the `DoclingDocument` in-place:
-- Replace anchor table's data with merged content
-- Merge provenance from all fragments
-- Remove satellite table references from the document tree
-
----
-
-## API Integration
-
-The enricher works with Docling's JSON serialization:
-
-```python
-from docling_core.types.doc import DoclingDocument
-
-# Receive JSON payload
-doc = DoclingDocument.model_validate_json(json_payload)
-
-# Enrich
-doc = enrich_document(doc)
-
-# Return JSON payload
-return doc.model_dump_json()
-```
-
----
+The merge engine (`merger.py`) never sees parser-native objects. It works entirely with `TableMeta` (pandas DataFrames + page metadata).
 
 ## Configuration Reference
 
 | Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+|---|---|---|---|
 | `max_page_gap` | int | 1 | Maximum pages between fragments |
+| `require_same_width` | bool | False | Require identical column counts |
 | `max_width_difference` | int | 4 | Column count tolerance |
-| `header_sim_strict` | float | 0.6 | Threshold for repeated header detection |
-| `header_sim_loose` | float | 0.3 | Lower threshold when other signals are strong |
+| `header_sim_strict` | float | 0.6 | Header similarity threshold |
+| `header_sim_loose` | float | 0.3 | Lower threshold (with layout confirmation) |
 | `row_sim_threshold` | float | 0.3 | First-row similarity fallback |
+| `use_layout_hint` | bool | True | Use vertical position signals |
+| `bottom_band_min` | float | 0.6 | Table A must end below this (0=top, 1=bottom) |
+| `top_band_max` | float | 0.4 | Table B must start above this |
 | `headerish_tokens` | Set[str] | (see code) | Tokens indicating header content |
 | `spillover_require_content_check` | bool | False | Require URL/ticket patterns for spillover |
 | `stitch_separator` | str | "\n" | Join character for split content |
-| `min_headerish_tokens` | int | 1 | Minimum header-like tokens required |
 | `max_orphan_rows` | int | 2 | Max rows for header orphan classification |
 | `max_data_orphan_rows` | int | 5 | Max rows for data orphan classification |
-| `use_layout_hint` | bool | True | Use vertical position for merge decisions |
-| `bottom_band_min` | float | 0.6 | Table A must end below this (0=top, 1=bottom) |
-| `top_band_max` | float | 0.4 | Table B must start above this (0=top, 1=bottom) |
 
----
+## Writing a Custom Adapter
 
-## Project Structure
-
-```
-docling_table_enricher/
-├── __init__.py      # Public API: enrich_document(), MultiPageConfig
-├── models.py        # Data classes: MultiPageConfig, TableMeta, LogicalTable
-├── merger.py        # Core merge logic: detection, grouping, building
-└── injector.py      # DoclingDocument surgery: content replacement, tree pruning
-```
-
----
-
-## Integration Notes
-
-### Error Handling
+To integrate a new parser, implement two methods. Here's a working skeleton:
 
 ```python
-from docling_table_enricher import enrich_document, EnrichmentError
+from typing import Any, List
+import pandas as pd
+from table_stitcher import TableStitcher, MultiPageConfig
+from table_stitcher.adapters.base import TableStitcherAdapter
+from table_stitcher.models import TableMeta, LogicalTable
+from table_stitcher.merger import tokenize, normalize_col_name, is_numeric_like_colnames, first_row_has_number
 
-# Default: fails gracefully, logs error, returns original doc
-doc = enrich_document(doc)
+class MyParserAdapter:
+    def extract(self, doc: Any, cfg: MultiPageConfig) -> List[TableMeta]:
+        tables_meta = []
+        for idx, table in enumerate(doc.tables):
+            # 1. Convert your table to a DataFrame
+            #    - First row as header if it looks like headers
+            #    - Set df.attrs['is_headerless'] = True if no real headers
+            df = pd.DataFrame(table.rows, columns=table.headers)
 
-# Strict mode: raises EnrichmentError on failure
+            # 2. Get page info
+            pages = [table.page_number]
+            start_page = pages[0]
+
+            # 3. Tokenize headers for similarity matching
+            header_tokens = set()
+            for col in df.columns:
+                header_tokens |= tokenize(normalize_col_name(col))
+
+            # 4. Tokenize first row (fallback similarity signal)
+            first_row_tokens = set()
+            if df.shape[0] > 0:
+                first_row_tokens = tokenize(
+                    " ".join(str(x) for x in df.iloc[0].tolist())
+                )
+
+            # 5. Classify: is_headerless, is_header_orphan, is_data_orphan
+            raw_columns = [str(c) for c in df.columns]
+            is_headerless = df.attrs.get('is_headerless', False)
+
+            tables_meta.append(TableMeta(
+                idx=idx,
+                df=df,
+                start_page=start_page,
+                pages=pages,
+                width=df.shape[1],
+                header_tokens=header_tokens,
+                first_row_tokens=first_row_tokens,
+                raw_columns=raw_columns,
+                vert_center=None,       # Set if bbox available
+                vert_top=None,          # Normalized 0-1, 0=top of page
+                vert_bottom=None,       # Normalized 0-1, 1=bottom of page
+                is_header_orphan=False, # True if headers-only, no/few data rows
+                is_data_orphan=False,   # True if data-only, no real headers
+                numeric_like_cols=is_numeric_like_colnames(raw_columns),
+                row_count=df.shape[0],
+                is_headerless=is_headerless,
+            ))
+        return tables_meta
+
+    def inject(self, doc: Any, logical_tables: List[LogicalTable]) -> Any:
+        for lt in logical_tables:
+            if len(lt.members) <= 1:
+                continue  # Nothing merged, skip
+
+            anchor_idx = lt.members[0]
+            # Replace the anchor table's data with lt.df
+            doc.tables[anchor_idx].data = lt.df
+            doc.tables[anchor_idx].pages = lt.pages
+
+            # Mark or remove satellite tables
+            for sat_idx in lt.members[1:]:
+                doc.tables[sat_idx].merged_into = anchor_idx
+
+        return doc
+
+# Use it:
+stitcher = TableStitcher(adapter=MyParserAdapter())
+doc = stitcher.stitch(doc)
+```
+
+### Key `TableMeta` fields the merger relies on
+
+| Field | What the merger uses it for |
+|---|---|
+| `idx` | Original table index in `doc.tables` — used for result mapping |
+| `df` | The table content as a DataFrame — used for row stitching |
+| `start_page`, `pages` | Page adjacency checks — must be populated |
+| `width` | Column count matching — primary merge signal |
+| `header_tokens` | Jaccard similarity for repeated-header detection |
+| `is_headerless` | If `True`, table is a continuation candidate |
+| `is_header_orphan` | If `True`, eligible for orphan+data merge |
+| `is_data_orphan` | If `True`, eligible for header+orphan merge |
+| `vert_top`, `vert_bottom` | Layout hints (0-1 normalized) — optional, set to `None` if unavailable |
+
+## Pass-Through Guarantee
+
+Table-stitcher follows a **no-data-loss** principle:
+
+- If extraction fails for a table, the **original table is preserved unchanged** in the document. It is not removed or modified.
+- If the entire stitching pipeline fails, the **original document is returned as-is**.
+- Tables that don't match any merge criteria pass through untouched.
+- Skipped tables are logged with a count (e.g., `"Extracted 5/7 tables (2 skipped — originals preserved)"`).
+
+This means you can safely call `stitch_tables()` on any document — the worst case is that nothing changes, never that data is lost.
+
+## Error Handling
+
+```python
+from table_stitcher import stitch_tables, StitchingError
+
+# Default: fails gracefully, returns original doc
+doc = stitch_tables(doc)
+
+# Strict: raises on failure
 try:
-    doc = enrich_document(doc, raise_on_error=True)
-except EnrichmentError as e:
+    doc = stitch_tables(doc, raise_on_error=True)
+except StitchingError as e:
     handle_error(e)
 ```
 
-### Logging
-
-The module logs to `docling_table_enricher`. Your logging config will capture it automatically:
+## Logging
 
 ```python
 import logging
-logging.getLogger("docling_table_enricher").setLevel(logging.INFO)
+logging.getLogger("table_stitcher").setLevel(logging.INFO)
 ```
 
-### Version
+## License
 
-```python
-from docling_table_enricher import __version__
-print(__version__)  # "0.1.0"
-```
-
----
-
-## Limitations
-
-- **Complex header structures:** Tables with multi-row headers or merged cells may not be detected correctly (upstream Docling limitation).
-- **Non-tabular spillover:** Very large text blocks that span pages may not be handled if they exceed typical spillover patterns.
-- **Page size estimation:** For geometry hints, we assume A4 page height (842 points) for normalization. This works for most documents but may be slightly off for non-standard page sizes.
-
----
+MIT

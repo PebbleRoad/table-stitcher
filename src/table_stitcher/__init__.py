@@ -34,8 +34,10 @@ __version__ = "0.2.0"
 __all__ = [
     "stitch_tables",
     "extract_table_meta",
+    "merge_multipage_tables",
     "TableStitcher",
     "MultiPageConfig",
+    "LogicalTable",
     "TableMeta",
     "StitchingError",
     "TableStitcherAdapter",

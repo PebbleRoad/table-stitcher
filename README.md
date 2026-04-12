@@ -62,9 +62,8 @@ doc = stitch_tables(doc, config=config)
 
 ```python
 from typing import Any, List
-from table_stitcher import TableStitcher, MultiPageConfig
+from table_stitcher import TableStitcher, MultiPageConfig, TableMeta, LogicalTable
 from table_stitcher.adapters.base import TableStitcherAdapter
-from table_stitcher.models import TableMeta, LogicalTable
 
 class MyParserAdapter:
     def extract(self, doc, cfg: MultiPageConfig) -> List[TableMeta]:
@@ -105,7 +104,7 @@ A 1-column headerless fragment following a multi-column table is almost certainl
 
 ```
 table_stitcher/
-  __init__.py         # Public API: stitch_tables(), TableStitcher
+  __init__.py         # Public API: stitch_tables(), extract_table_meta(), TableStitcher
   models.py           # MultiPageConfig, TableMeta, LogicalTable
   merger.py           # Core engine (parser-agnostic)
   adapters/
@@ -148,9 +147,8 @@ To integrate a new parser, implement two methods. Here's a working skeleton:
 ```python
 from typing import Any, List
 import pandas as pd
-from table_stitcher import TableStitcher, MultiPageConfig
+from table_stitcher import TableStitcher, MultiPageConfig, TableMeta, LogicalTable
 from table_stitcher.adapters.base import TableStitcherAdapter
-from table_stitcher.models import TableMeta, LogicalTable
 from table_stitcher.merger import tokenize, normalize_col_name, is_numeric_like_colnames, first_row_has_number
 
 class MyParserAdapter:

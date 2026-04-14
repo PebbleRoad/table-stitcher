@@ -15,6 +15,23 @@ PDF extraction tools often fragment a single logical table into multiple pieces 
 - **Spillover content** -- URLs or long text cut at page margins, appearing as separate 1-column "tables"
 - **Split cells** -- cell content fragmented across page breaks
 
+## How It Fits in Your Pipeline
+
+Table-stitcher is **parser-agnostic at the table-fragment level** — it doesn't parse PDFs, HTML, or anything else. It assumes your upstream pipeline already extracted tables and knows which page each came from.
+
+```
+your parser          adapter.extract()      merger          adapter.inject()     your format
+(Docling, VLM,  ──>  List[TableMeta]   ──>  List[Logical ──>  write merged   ──>  (DoclingDocument,
+ Camelot, HTML…)                            Table]            results back         HTML, JSON…)
+```
+
+The core engine only ever speaks `TableMeta` — a small dataclass carrying a DataFrame, page number, column count, header tokens, and optional bbox. Your job is a thin adapter with two methods:
+
+- `extract(doc, cfg) -> List[TableMeta]` — translate your parser's native table objects into `TableMeta`
+- `inject(doc, logical_tables) -> doc` — write merged results back into your native format
+
+Ships with a `DoclingAdapter` out of the box. Writing an `HTMLAdapter`, `CamelotAdapter`, or one for your own pipeline is ~50 lines — see [Writing a Custom Adapter](#writing-a-custom-adapter).
+
 ## Installation
 
 **From PyPI** (once published):
@@ -120,6 +137,21 @@ The adapter protocol has exactly **two methods**:
 | `inject(doc, logical_tables)` | Write merged results back into your document |
 
 The merge engine (`merger.py`) never sees parser-native objects. It works entirely with `TableMeta` (pandas DataFrames + page metadata).
+
+### Adapter Design Principle: Respect the Incoming Structure
+
+> **Adapters must preserve the native structure of tables they don't modify, and preserve as much native structure as possible for tables they do modify.**
+
+`TableMeta` is intentionally lossy — it reduces a rich table (with rowspan, colspan, multi-row headers, cell styles, bboxes) into a pandas DataFrame plus metadata, because the merger only needs that much to make merge decisions.
+
+When `inject()` writes results back, the temptation is to rebuild the native structure from the DataFrame alone. **Don't.** That throws away everything `TableMeta` didn't capture.
+
+Two rules for `inject()`:
+
+1. **Pass-through unchanged.** If a logical table has only one member (nothing merged), leave the original native table object untouched. Do not round-trip it through the DataFrame.
+2. **Partial reuse on merge.** For merged tables, reuse the anchor's native structure where possible (e.g. header rows with their spans) and only rebuild the parts the merger actually changed (the data rows, formed by concatenation).
+
+The Docling adapter illustrates this: `_dataframe_to_docling_data()` reuses the anchor's original header rows verbatim (preserving rowspan/colspan) and only builds fresh 1x1 cells for the merged data rows. An earlier version rebuilt the entire grid from the DataFrame and destroyed multi-row headers — that was a bug, not a limitation of the architecture.
 
 ## Configuration Reference
 

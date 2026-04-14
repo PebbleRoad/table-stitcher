@@ -204,6 +204,32 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
 # DataFrame → Docling TableData conversion
 # -------------------------------------------------------------------
 
+def _extract_original_header_rows(
+    original_data: Optional[TableData],
+) -> Tuple[List[List[TableCell]], List[TableCell]]:
+    """
+    Extract header rows from the anchor table's original grid.
+
+    Returns (header_grid_rows, flat_header_cells).
+    If the original data has multi-row headers with rowspan/colspan,
+    they are preserved exactly as-is.
+    """
+    if not original_data or not original_data.grid:
+        return [], []
+
+    header_rows: List[List[TableCell]] = []
+    header_cells: List[TableCell] = []
+
+    for row in original_data.grid:
+        if row and any(getattr(c, 'column_header', False) for c in row if c):
+            header_rows.append(row)
+            header_cells.extend(c for c in row if c)
+        else:
+            break  # first non-header row = end of header
+
+    return header_rows, header_cells
+
+
 def _dataframe_to_docling_data(
     df: pd.DataFrame,
     original_data: Optional[TableData] = None,
@@ -211,7 +237,11 @@ def _dataframe_to_docling_data(
     """
     Converts a pandas DataFrame back into Docling's TableData structure.
 
-    Creates simple 1x1 cells (no span detection from content).
+    When ``original_data`` is provided and contains multi-row header rows
+    (cells with ``column_header=True``, rowspan, colspan), those header rows
+    are preserved exactly.  Only the data rows are rebuilt from the DataFrame.
+    This prevents the lossy roundtrip that would flatten complex headers into
+    simple 1x1 cells.
     """
     if df.empty:
         cols = list(df.columns) if len(df.columns) > 0 else ["Column_0"]
@@ -236,42 +266,53 @@ def _dataframe_to_docling_data(
             grid=[header_cells],
         )
 
-    num_data_rows = len(df)
-    num_cols = len(df.columns)
-    num_total_rows = num_data_rows + 1
+    # --- Try to reuse original header rows (preserves rowspan/colspan) ---
+    orig_header_rows, orig_header_cells = _extract_original_header_rows(original_data)
 
+    num_cols = len(df.columns)
+
+    if orig_header_rows:
+        # Use original header rows as-is
+        num_header_rows = len(orig_header_rows)
+        grid: List[List[TableCell]] = list(orig_header_rows)
+        table_cells: List[TableCell] = list(orig_header_cells)
+    else:
+        # Fall back to building flat 1x1 header from DataFrame columns
+        num_header_rows = 1
+        grid = []
+        table_cells = []
+
+        header_row_cells = []
+        for j, col_name in enumerate(df.columns):
+            cell = TableCell(
+                text=str(col_name) if col_name is not None else "",
+                row_span=1,
+                col_span=1,
+                column_header=True,
+                row_header=False,
+                start_row_offset_idx=0,
+                end_row_offset_idx=1,
+                start_col_offset_idx=j,
+                end_col_offset_idx=j + 1,
+            )
+            header_row_cells.append(cell)
+            table_cells.append(cell)
+
+        grid.append(header_row_cells)
+
+    # --- Detect row_header styling from original data ---
     has_row_headers = False
     if original_data and original_data.grid:
-        for row in original_data.grid[1:]:
+        for row in original_data.grid[num_header_rows:]:
             if row and len(row) > 0 and row[0]:
                 if getattr(row[0], 'row_header', False):
                     has_row_headers = True
                     break
 
-    grid: List[List[TableCell]] = []
-    table_cells: List[TableCell] = []
-
-    header_row_cells = []
-    for j, col_name in enumerate(df.columns):
-        cell = TableCell(
-            text=str(col_name) if col_name is not None else "",
-            row_span=1,
-            col_span=1,
-            column_header=True,
-            row_header=False,
-            start_row_offset_idx=0,
-            end_row_offset_idx=1,
-            start_col_offset_idx=j,
-            end_col_offset_idx=j + 1,
-        )
-        header_row_cells.append(cell)
-        table_cells.append(cell)
-
-    grid.append(header_row_cells)
-
+    # --- Build data rows from merged DataFrame ---
     for i, (_, row) in enumerate(df.iterrows()):
         grid_row: List[TableCell] = []
-        table_row_idx = i + 1
+        table_row_idx = num_header_rows + i
 
         for j, val in enumerate(row):
             if pd.isna(val) or val is None:
@@ -296,6 +337,8 @@ def _dataframe_to_docling_data(
             table_cells.append(cell)
 
         grid.append(grid_row)
+
+    num_total_rows = num_header_rows + len(df)
 
     return TableData(
         num_rows=num_total_rows,

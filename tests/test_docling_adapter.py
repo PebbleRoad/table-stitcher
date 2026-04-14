@@ -78,6 +78,123 @@ class TestNonEmptyDataFrame:
         assert data_cell.column_header is False
 
 
+class TestHeaderPreservation:
+    """_dataframe_to_docling_data() should preserve multi-row headers with spans."""
+
+    def _make_multirow_header_data(self) -> TableData:
+        """Build a TableData with a 2-row header (rowspan + colspan)."""
+        # Row 0: [rowspan=2 ""], [rowspan=2 "Claim"], [colspan=3 "Amount"]
+        # Row 1: [Basic], [Classic], [Elite]
+        h00 = TableCell(text="", row_span=2, col_span=1, column_header=True,
+                        row_header=False, start_row_offset_idx=0, end_row_offset_idx=2,
+                        start_col_offset_idx=0, end_col_offset_idx=1)
+        h01 = TableCell(text="Claim event(s)", row_span=2, col_span=1, column_header=True,
+                        row_header=False, start_row_offset_idx=0, end_row_offset_idx=2,
+                        start_col_offset_idx=1, end_col_offset_idx=2)
+        h02 = TableCell(text="Amount payable (S$)", row_span=1, col_span=3, column_header=True,
+                        row_header=False, start_row_offset_idx=0, end_row_offset_idx=1,
+                        start_col_offset_idx=2, end_col_offset_idx=5)
+        h10 = TableCell(text="Basic", row_span=1, col_span=1, column_header=True,
+                        row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
+                        start_col_offset_idx=2, end_col_offset_idx=3)
+        h11 = TableCell(text="Classic", row_span=1, col_span=1, column_header=True,
+                        row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
+                        start_col_offset_idx=3, end_col_offset_idx=4)
+        h12 = TableCell(text="Elite", row_span=1, col_span=1, column_header=True,
+                        row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
+                        start_col_offset_idx=4, end_col_offset_idx=5)
+        # Data row
+        d0 = TableCell(text="A", row_span=1, col_span=1, column_header=False,
+                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
+                       start_col_offset_idx=0, end_col_offset_idx=1)
+        d1 = TableCell(text="Death", row_span=1, col_span=1, column_header=False,
+                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
+                       start_col_offset_idx=1, end_col_offset_idx=2)
+        d2 = TableCell(text="200,000", row_span=1, col_span=1, column_header=False,
+                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
+                       start_col_offset_idx=2, end_col_offset_idx=3)
+        d3 = TableCell(text="500,000", row_span=1, col_span=1, column_header=False,
+                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
+                       start_col_offset_idx=3, end_col_offset_idx=4)
+        d4 = TableCell(text="1,000,000", row_span=1, col_span=1, column_header=False,
+                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
+                       start_col_offset_idx=4, end_col_offset_idx=5)
+
+        all_cells = [h00, h01, h02, h10, h11, h12, d0, d1, d2, d3, d4]
+        grid = [
+            [h00, h01, h02],          # header row 0
+            [h10, h11, h12],          # header row 1
+            [d0, d1, d2, d3, d4],     # data row
+        ]
+        return TableData(num_rows=3, num_cols=5, table_cells=all_cells, grid=grid)
+
+    def test_multirow_header_preserved(self):
+        """When original_data has a 2-row header with spans, it should be reused."""
+        original = self._make_multirow_header_data()
+        merged_df = pd.DataFrame({
+            "col0": ["A", "D"],
+            "col1": ["Death", "Medical"],
+            "col2": ["200,000", "3,000"],
+            "col3": ["500,000", "4,000"],
+            "col4": ["1,000,000", "5,000"],
+        })
+
+        td = _dataframe_to_docling_data(merged_df, original_data=original)
+
+        # Should have 2 header rows + 2 data rows = 4 total
+        assert td.num_rows == 4
+        assert len(td.grid) == 4
+
+        # Header row 0 preserved with spans
+        assert td.grid[0][0].text == ""
+        assert td.grid[0][0].row_span == 2
+        assert td.grid[0][2].text == "Amount payable (S$)"
+        assert td.grid[0][2].col_span == 3
+
+        # Header row 1 preserved — Docling normalizes the grid by filling
+        # rowspan cells into spanned positions, so row 1 has 5 cells:
+        # [""(rowspan), "Claim"(rowspan), "Basic", "Classic", "Elite"]
+        assert td.grid[1][2].text == "Basic"
+        assert td.grid[1][3].text == "Classic"
+        assert td.grid[1][4].text == "Elite"
+
+        # Data rows from DataFrame
+        assert td.grid[2][0].text == "A"
+        assert td.grid[3][0].text == "D"
+        assert td.grid[3][2].text == "3,000"
+
+        # Data row offsets should account for 2 header rows
+        assert td.grid[2][0].start_row_offset_idx == 2
+        assert td.grid[3][0].start_row_offset_idx == 3
+
+    def test_no_original_data_falls_back_to_flat_header(self):
+        """Without original_data, should build flat 1x1 headers from DataFrame columns."""
+        df = pd.DataFrame({"Name": ["Alice"], "Age": ["30"]})
+        td = _dataframe_to_docling_data(df, original_data=None)
+
+        assert td.num_rows == 2
+        assert len(td.grid) == 2
+        assert td.grid[0][0].text == "Name"
+        assert td.grid[0][0].row_span == 1
+        assert td.grid[0][0].col_span == 1
+
+    def test_single_row_header_original_still_reused(self):
+        """Even a simple 1-row header from original_data should be reused."""
+        cells = [
+            TableCell(text="Score", row_span=1, col_span=1, column_header=True,
+                      row_header=False, start_row_offset_idx=0, end_row_offset_idx=1,
+                      start_col_offset_idx=0, end_col_offset_idx=1),
+        ]
+        original = TableData(num_rows=1, num_cols=1, table_cells=cells, grid=[cells])
+
+        df = pd.DataFrame({"x": ["10", "20"]})
+        td = _dataframe_to_docling_data(df, original_data=original)
+
+        # Should use "Score" from original, not "x" from DataFrame
+        assert td.grid[0][0].text == "Score"
+        assert td.num_rows == 3  # 1 header + 2 data
+
+
 class TestAdapterProtocol:
     """Verify DoclingAdapter satisfies the protocol."""
 
@@ -145,7 +262,8 @@ class TestInjection:
         assert doc.tables[1].data is original_data_1
 
     def test_merged_table_data_replaced(self):
-        """Anchor table's data should be replaced with merged DataFrame."""
+        """Anchor table's data should be replaced with merged DataFrame,
+        preserving original header rows from the anchor's grid."""
         doc = _build_doc_with_tables(3)
 
         merged_df = pd.DataFrame({"Name": ["Alice", "Bob", "Charlie"]})
@@ -160,8 +278,10 @@ class TestInjection:
         # Anchor (table 0) should have new data
         assert doc.tables[0].data.num_rows == 4  # 1 header + 3 data rows
         assert doc.tables[0].data.num_cols == 1
-        # Check the actual cell content
-        assert doc.tables[0].data.grid[0][0].text == "Name"
+        # Header is preserved from the anchor's original grid (not DataFrame columns)
+        assert doc.tables[0].data.grid[0][0].text == "H0"
+        assert doc.tables[0].data.grid[0][0].column_header is True
+        # Data rows come from the merged DataFrame
         assert doc.tables[0].data.grid[1][0].text == "Alice"
 
     def test_satellite_refs_pruned_from_body(self):

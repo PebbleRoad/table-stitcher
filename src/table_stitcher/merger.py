@@ -453,7 +453,7 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
     # --- PASS 2: Orphan repair ---
     page_map = defaultdict(list)
     for t in tables_meta:
-        if t.start_page:
+        if t.start_page is not None:
             page_map[t.start_page].append(t.idx)
 
     for p in page_map:
@@ -465,6 +465,19 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
                     posI, posJ = orig_to_pos[i], orig_to_pos[j]
                     if uf.find(posI) == uf.find(posJ):
                         continue
+
+                    # Same continuity guard as Pass 1: an unextracted table
+                    # sitting between i and j is an unknown fragment, and
+                    # merging across it risks false positives.
+                    lo, hi = (i, j) if i < j else (j, i)
+                    if hi - lo > 1:
+                        gap_indices = set(range(lo + 1, hi))
+                        if not gap_indices.issubset(extracted_indices):
+                            log.debug(f"Skipping orphan pair {i}->{j}: "
+                                      f"unextracted table(s) "
+                                      f"{gap_indices - extracted_indices} between them")
+                            continue
+
                     tA, tB = meta_by_idx[i], meta_by_idx[j]
                     should, reason = should_force_orphan_merge(tA, tB, cfg)
                     if should:
@@ -509,8 +522,17 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
                 if spill_content:
                     last_row = df.shape[0] - 1
                     last_col = df.shape[1] - 1
-                    current_val = str(df.iloc[last_row, last_col])
-                    df.iloc[last_row, last_col] = current_val + cfg.stitch_separator + spill_content
+                    raw_val = df.iloc[last_row, last_col]
+                    if pd.isna(raw_val):
+                        current_val = ""
+                    else:
+                        current_val = str(raw_val).strip()
+                    if current_val:
+                        df.iloc[last_row, last_col] = (
+                            current_val + cfg.stitch_separator + spill_content
+                        )
+                    else:
+                        df.iloc[last_row, last_col] = spill_content
                     pgs.update(spill_meta.pages)
 
         if len(pgs) > 1:

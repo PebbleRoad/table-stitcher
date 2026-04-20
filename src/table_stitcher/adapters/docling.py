@@ -57,12 +57,35 @@ def _extract_y_bounds_from_prov(prov_list: List[Any]) -> Optional[Tuple[float, f
     return None
 
 
+def _resolve_page_height(prov_list: List[Any], doc: Any, fallback: float = 842.0) -> float:
+    """
+    Look up the actual page height for the first prov entry from the document.
+    Falls back to A4 (842pt) only when the document does not expose a size.
+    """
+    pages = getattr(doc, "pages", None)
+    if not pages:
+        return fallback
+    for p in prov_list:
+        page_no = getattr(p, "page_no", None)
+        if page_no is None:
+            continue
+        page_item = pages.get(page_no) if hasattr(pages, "get") else None
+        size = getattr(page_item, "size", None) if page_item else None
+        height = getattr(size, "height", None) if size else None
+        if height:
+            return float(height)
+    return fallback
+
+
 def _compute_vertical_positions(
     prov_list: List[Any],
     page_height: float = 842.0,
 ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
     """
     Compute normalized vertical positions (0-1 scale, top=0, bottom=1).
+
+    Caller should pass the actual page height for the page in question;
+    the default of 842.0 (A4) is only a safety net for missing metadata.
     """
     bounds = _extract_y_bounds_from_prov(prov_list)
     if bounds is None:
@@ -419,7 +442,10 @@ class DoclingAdapter:
 
             vert_center, vert_top, vert_bottom = None, None, None
             if cfg.use_layout_hint and prov:
-                vert_center, vert_top, vert_bottom = _compute_vertical_positions(prov)
+                page_height = _resolve_page_height(prov, doc)
+                vert_center, vert_top, vert_bottom = _compute_vertical_positions(
+                    prov, page_height=page_height
+                )
 
             raw_columns = [str(c) for c in df.columns]
             numeric_like_cols = is_numeric_like_colnames(raw_columns)

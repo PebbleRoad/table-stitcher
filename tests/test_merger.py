@@ -100,6 +100,27 @@ class TestUnionFindIndexMapping:
         # idx 1-4 were not extracted — unknown tables sit between them
         assert len(results) == 2
 
+    def test_orphan_repair_respects_gap_guard(self):
+        """
+        Pass 2 (orphan repair) must also refuse to merge across an
+        unextracted table index, mirroring the Pass 1 guard.
+        """
+        # A header orphan on page 1 + a data orphan on page 2 would
+        # normally trigger should_force_orphan_merge in Pass 2.  Here
+        # idx 1..3 are missing (not extracted), so the merge must be
+        # blocked.
+        header_df = pd.DataFrame(columns=["Name", "Age"])
+        data_df = pd.DataFrame({"Name": ["Alice"], "Age": ["30"]})
+        metas = [
+            _make_meta(idx=0, df=header_df, start_page=1, is_header_orphan=True),
+            _make_meta(idx=4, df=data_df, start_page=2, is_data_orphan=True),
+        ]
+        cfg = MultiPageConfig()
+        results = merge_multipage_tables(metas, cfg)
+        assert len(results) == 2, (
+            "Pass 2 must not merge across unextracted indices 1..3"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Bug 3: Orphan-merge anchor picks wrong header source

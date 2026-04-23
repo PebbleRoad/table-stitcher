@@ -1,0 +1,102 @@
+description: |
+  Four-page COVID-19 vs MIS-C lab comparison from the PT2 test split. The
+  paper contains THREE distinct tables by width (4 / 7 / 6), each spanning
+  multiple pages. Fragment distribution:
+    - idx=0 page 1 (width 4)  — standalone baseline-demographics table
+    - idx=1 page 2 (width 7)  — hemodynamic labs (continues onto page 3)
+    - idx=2 page 3 (width 7)  — continuation of the width-7 table
+    - idx=3 page 3 (width 6)  — cytokine panel (continues onto page 4)
+    - idx=4 page 4 (width 6)  — continuation of the width-6 table
+
+  idx=1 and idx=2 originally failed to merge because each fragment had a
+  different data-as-headers row (parser ate the real header on each page).
+  The adapter's looks_like_data now catches "value (range)" patterns like
+  '280 (176, 404)', flagging both fragments headerless so the width-match
+  path joins them. Result: 3 logical tables as expected.
+config: {}
+logical_tables:
+- members:
+  - 0
+  pages:
+  - 1
+  shape:
+  - 32
+  - 4
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  first_row:
+  - ''
+  - (a)
+  - (a)
+  - (a)
+  last_row:
+  - TropIng/mL
+  - 0.02 (0.01, 0.07)
+  - 0.02 (0.01, 0.08)
+  - '0.12'
+- members:
+  - 1
+  - 2
+  pages:
+  - 2
+  - 3
+  shape:
+  - 41
+  - 7
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  - Column_4
+  - Column_5
+  - Column_6
+  first_row:
+  - 'Platelets #/nL'
+  - 'Platelets #/nL'
+  - 'Platelets #/nL'
+  - 280 (176, 404)
+  - 158 (123, 240)
+  - 158 (123, 240)
+  - 7.0 x 10-7
+  last_row:
+  - Ferritin Med/IQR ng/mL
+  - 239 (100, 253)
+  - 282 (182, 472)
+  - 211 (38.8, 400)
+  - 334 (223.5, 597.5)
+  - 277 (44, 592)
+  - 302 (224, 532)
+- members:
+  - 3
+  - 4
+  pages:
+  - 3
+  - 4
+  shape:
+  - 46
+  - 6
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  - Column_4
+  - Column_5
+  first_row:
+  - Cytokine (Pg/mL)
+  - COVID-19
+  - MIS-C
+  - p-Value
+  - Specificity
+  - Sensitivity
+  last_row:
+  - PDGF-AA
+  - 3404.5 (1553.2, 4519.0)
+  - 2811.0(1384.8, 4426.8)
+  - 4.81 × 101
+  - 0.56 - 0.46
+  - 0.46 + 0.46

@@ -1,0 +1,37 @@
+description: Two-page literature-search strategy table (qualitative research). Both pages share columns
+  'Database' and 'Search strategy'; merges via strict header Jaccard. Page 1 fragment is flagged data_orphan
+  (the first-page table is small) but still merges cleanly.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 5
+  - 2
+  columns:
+  - Database
+  - Search strategy
+  first_row:
+  - Ovid MEDLINE
+  - -(e-health or ehealth).tw,kf -exp Speech Therapy/ -exp Occupational Therapy/ -telemedicine/ or telerehabilitation/
+    or telehealth/ or telepsychiatry/ -(Telemedicine or tele medicine or tele-medicine or telerehab* or
+    telepsychiatr*) tw,kf -(Text messag* or video conferenc*).tw,kf -(online or web or remote" or virtual
+    or digital) adj adj1 (intervention* or therap" or aftercare or rehab* or consult*)).tw,kf -occupational
+    therapist/ or physical therapist/ or speech therapist/ -exp physical therapy/ -1 or 4 or 5 or 6 or
+    7
+  last_row:
+  - SCOPUS
+  - '-"telemedicine" OR "telerehabilitation" OR "telehealth" OR''ehealth" OR ''e-health" OR "telepsychiatry"
+
+    -(Online or web or remote" or virtual or digital) w/1 (intervention" or therap" or aftercare or rehab*
+    or consult*))
+
+    -''Occupational therap**OR "physical therap* OR ''speech therap*
+
+    -#1 AND #2
+
+    -#3 AND #4'

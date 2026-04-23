@@ -1,0 +1,36 @@
+description: Two-page table with repeated 3-column header ('Category / Clusters of challenges / Sample
+  quotes'). Page-2 fragment is flagged data_orphan (only 1 row); merger uses strict header Jaccard.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 4
+  - 3
+  columns:
+  - Category
+  - Clusters of challenges
+  - Sample quotes
+  first_row:
+  - Concerns about negative attitudes and preconceptions of locals
+  - 1. Challenge of building relationships 2. Lack of natural supports 3. Tokenistic club membership or
+  - We tend not to have many challenges in acceptance, but we do have challenges in support for to get
+    meaningful participation. And we also have challenges, it's a constant challenge to try and get the
+    right job.... Its people developing into more meaningful things and developing the social networks
+    related to that. So you go to get a job to have a meaningful occupation and to have a valued role
+    and to get paid, but you also do it to build relationships, not necessarily particularly strong relationships,
+    but a group of friends and sometimes we struggle with that (ID08,
+  last_row:
+  - Managing changes to new locally based models
+  - 1. Securing funding properties 3. Inadequate resources for new service models 4. Family fears and
+    managing upervisio • Insurance as a barri %. Sark of people in remote rural
+  - I suppose one of our difficulties there, is that largely, there is quite a lot of small town and rural
+    that we operate within. So, for example, we have a local service in (name of town l), but effectively
+    identify that we serve four communities, the communities of (Names of four localities - towns and
+    townlands) but our service is pretty much in (name of town I). So, one of our difficulties is that
+    being involved in community and trying to put a focus on as much as possible on being involved in
+    the local community, but sometimes that is not as easy. (ID 08, telephone interviewee)

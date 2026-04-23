@@ -19,7 +19,6 @@ from ..models import (
     MultiPageConfig,
     TableMeta,
     LogicalTable,
-    DEFAULT_HEADERISH_TOKENS,
 )
 from ..merger import (
     normalize_col_name,
@@ -29,6 +28,100 @@ from ..merger import (
 )
 
 log = logging.getLogger(__name__)
+
+
+# -------------------------------------------------------------------
+# Cell-shape heuristics (used for both headerless detection and
+# structural header-orphan detection — shared so the two checks stay
+# consistent).
+# -------------------------------------------------------------------
+
+# Patterns a cell matches when it looks like data rather than a header.
+_DATA_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in [
+        r'^\d+$',
+        r'^\d+\.\d+$',
+        r'^\d{1,2}/\d{1,2}',
+        r'^\d{1,2}-\d{1,2}',
+        r'^https?://',
+        r'^[A-Z]+-\d+$',
+        r'^\$[\d,]+',
+        r'^[\d,]+\s*%$',
+        r'^Row\s*\d+',
+        r'^\d+\.\d+\.\d+',
+        r'^[\d,]+\.\d+$',               # financial: "13,085.03"
+        r'^[\d,]+$',                    # grouped integer: "1,234,567"
+        r'^\d+\.?\d*\s*\([\d,\s.]+\)',  # stat with range: "280 (176, 404)"
+        r'^\d+\.?\d*\s*[xX×]\s*10',     # scientific: "7.0 x 10-7"
+    ]
+]
+
+_AUTO_COLNAME_RE = re.compile(r"^(column|unnamed)[_:]?\s*\d+$", re.IGNORECASE)
+
+# A cell is "header-shaped" when it's short, alphabetic-ish, and contains
+# no data patterns. Used as the structural signal for orphan detection —
+# no domain vocabulary involved.
+_MAX_HEADER_CELL_LEN = 30
+
+
+def _looks_like_data(cell: str) -> bool:
+    s = str(cell).strip()
+    if not s:
+        return False
+    return any(p.search(s) for p in _DATA_PATTERNS)
+
+
+def _is_header_shaped_cell(cell: str) -> bool:
+    """True if cell is plausibly a header cell — short, not data, not auto-label."""
+    s = str(cell).strip()
+    if not s:
+        return True  # empty cells coexist with header cells
+    if len(s) > _MAX_HEADER_CELL_LEN:
+        return False
+    if _AUTO_COLNAME_RE.match(s):
+        return False
+    if _looks_like_data(s):
+        return False
+    return True
+
+
+def _detect_header_orphan(df: pd.DataFrame, is_headerless: bool, max_orphan_rows: int) -> bool:
+    """
+    Structural rule: a fragment is a header orphan when it's small,
+    its first row was treated as a header (not promoted from data), and
+    any data rows present look header-shaped too (no data patterns, short).
+
+    Column names themselves are only screened for data patterns and
+    auto-label form — NOT for length, because legitimate headers can be
+    phrase-long (e.g. "Average annual revenue per customer"). Data rows,
+    however, must be short AND non-data to qualify as header-shaped.
+
+    No vocabulary is consulted — universal across domains and languages.
+    """
+    if is_headerless:
+        return False
+    if df.shape[0] > max_orphan_rows:
+        return False
+
+    cols = [str(c) for c in df.columns]
+    # At least one meaningful column — not all empty / all auto-labels.
+    meaningful = [c for c in cols if c.strip() and not _AUTO_COLNAME_RE.match(c)]
+    if not meaningful:
+        return False
+
+    # Columns must not contain data patterns (numbers, currency, ranges).
+    # Length is NOT checked here — real headers can be long phrases.
+    if any(_looks_like_data(c) for c in cols):
+        return False
+
+    # Data rows (if any) must be header-shaped: short, non-data, non-auto.
+    # A long or data-shaped value in a data row means this fragment carries
+    # real data, not just orphaned header content.
+    for _, row in df.iterrows():
+        if not all(_is_header_shaped_cell(v) for v in row.tolist()):
+            return False
+
+    return True
 
 
 # -------------------------------------------------------------------
@@ -140,30 +233,10 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
     first_row = real_content_rows[0]
     num_cols = len(first_row)
 
-    # Determine if first row is header or data
-    data_patterns = [
-        r'^\d+$',
-        r'^\d+\.\d+$',
-        r'^\d{1,2}/\d{1,2}',
-        r'^\d{1,2}-\d{1,2}',
-        r'^https?://',
-        r'^[A-Z]+-\d+$',
-        r'^\$[\d,]+',
-        r'^[\d,]+\s*%$',
-        r'^Row\s*\d+',
-        r'^\d+\.\d+\.\d+',
-    ]
-
-    def looks_like_data(cell: str) -> bool:
-        cell = str(cell).strip()
-        if not cell:
-            return False
-        for pattern in data_patterns:
-            if re.search(pattern, cell, re.IGNORECASE):
-                return True
-        return False
-
-    has_data_values = any(looks_like_data(c) for c in first_row)
+    # Determine if first row is header or data — uses module-level
+    # _looks_like_data and _is_header_shaped_cell to stay consistent with
+    # structural orphan detection below.
+    has_data_values = any(_looks_like_data(c) for c in first_row)
     has_url = any("http" in str(c).lower() for c in first_row)
 
     non_empty_vals = [str(c).strip().upper() for c in first_row if str(c).strip()]
@@ -177,12 +250,20 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
         has_repeated_values = False
         has_placeholders = False
 
+    # Real headers are typically short (≤30 chars); a majority of long cells
+    # in the "header" row usually means we're looking at a data row whose
+    # true header was eaten by the parser on this page.
+    non_empty_cells = [str(c).strip() for c in first_row if str(c).strip()]
+    long_cells = sum(1 for c in non_empty_cells if len(c) > 30)
+    has_long_cells = bool(non_empty_cells) and long_cells / len(non_empty_cells) >= 0.5
+
     non_empty_count = sum(1 for v in first_row if v and v.strip())
     is_sparse = (non_empty_count < num_cols / 2) and (not first_row[0].strip())
 
     is_headerless = False
 
-    if has_data_values or has_url or is_sparse or has_repeated_values or has_placeholders:
+    if (has_data_values or has_url or is_sparse or has_repeated_values
+            or has_placeholders or has_long_cells):
         is_headerless = True
         header = [f"Column_{i}" for i in range(num_cols)]
 
@@ -404,7 +485,6 @@ class DoclingAdapter:
     def extract(self, doc: DoclingDocument, cfg: MultiPageConfig) -> List[TableMeta]:
         """Extract metadata from all tables in a DoclingDocument."""
         tables_meta: List[TableMeta] = []
-        headerish_tokens = cfg.headerish_tokens or DEFAULT_HEADERISH_TOKENS
         total = len(doc.tables)
         skipped = 0
 
@@ -449,17 +529,9 @@ class DoclingAdapter:
 
             raw_columns = [str(c) for c in df.columns]
             numeric_like_cols = is_numeric_like_colnames(raw_columns)
-            headerish_in_first_row = len(first_row_tokens & headerish_tokens)
-            headerish_in_headers = len(header_tokens & headerish_tokens)
 
-            is_header_orphan = (
-                df.shape[0] <= cfg.max_orphan_rows and
-                df.shape[0] >= 0 and
-                (
-                    (numeric_like_cols and headerish_in_first_row >= cfg.min_headerish_tokens) or
-                    (headerish_in_headers >= 2 and df.shape[0] <= 1) or
-                    df.shape[0] == 0
-                )
+            is_header_orphan = _detect_header_orphan(
+                df, is_headerless, cfg.max_orphan_rows
             )
 
             is_data_orphan = (

@@ -1,0 +1,35 @@
+description: 'Insurance disability payout schedule: pages 4-5 merge despite slight header drift (''Disability''
+  vs ''Disability payout''). Header also contains a colspan (''Amount payable (S$)'' repeated across 3
+  columns). Exercises loose header-match + multi-column header.'
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 4
+  - 5
+  shape:
+  - 28
+  - 6
+  columns:
+  - Column_0
+  - Column_1
+  - Disability
+  - Amount payable (S$)
+  - Amount payable (S$)
+  - Amount payable (S$)
+  first_row:
+  - ''
+  - Claim event(s)
+  - payout
+  - Basic
+  - Classic
+  - Elite
+  last_row:
+  - ''
+  - For claim under Sickness 5
+  - accident
+  - ''
+  - '500'
+  - ''

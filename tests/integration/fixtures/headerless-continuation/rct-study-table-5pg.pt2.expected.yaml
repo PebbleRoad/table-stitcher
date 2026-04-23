@@ -1,0 +1,47 @@
+description: Five-page RCT study-summary table. Page 1 has proper 8-column headers (Study trial number,
+  Study design, ...); pages 2-5 are headerless with identical width. Longest-chain headerless continuation
+  we have from PT2.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  shape:
+  - 147
+  - 8
+  columns:
+  - Study trial number
+  - Study design
+  - Country
+  - Intervention
+  - Population mean age
+  - Female (%)
+  - Numbers of patients (n)
+  - Treatment duration (weeks)
+  first_row:
+  - Yoshida et al. (37) 2018 No. JapicCTI- 152936
+  - Phase lIb, RCT, double-blind, multicenter
+  - Japanese
+  - VIB 50mg, qd
+  - 58.0 = 11.8
+  - 334(90.3)
+  - '370'
+  - aged ≥ 20 years, patients experiencing AB symptoms for ≥ 6 months
+  last_row:
+  - Batista et al. (56) 2015
+  - Phase III, RCT, double-blind, multicenter
+  - Multinational
+  - SOL 5 mg.
+  - 57.4 (13.6)
+  - 709 (75.9)
+  - '934'
+  - aged ≥ 18 years old, with symptoms of OAB for ≥ 3 months

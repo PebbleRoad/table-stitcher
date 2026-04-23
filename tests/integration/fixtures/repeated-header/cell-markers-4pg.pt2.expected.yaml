@@ -1,0 +1,31 @@
+description: Four-page cell-marker table with identical three-column header on every page (Marker, Description,
+  Source). Final fragment is flagged data_orphan (only 2 rows). Clean repeated-header merge.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  shape:
+  - 43
+  - 3
+  columns:
+  - Marker
+  - Description
+  - Source
+  first_row:
+  - BONES
+  - BONES
+  - BONES
+  last_row:
+  - PLVAP
+  - PLVAP staining was observed not only in isolated brain microvessels but also in brain netastases in
+    breast cancer. Immune labelling for PLVAP was performed in 4T1 TNB ulture, where clear expression
+    of this protein was observe
+  - (93]

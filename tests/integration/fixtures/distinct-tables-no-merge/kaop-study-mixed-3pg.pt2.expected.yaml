@@ -1,0 +1,82 @@
+description: 'Three pages containing THREE distinct tables: a demographics table (standalone, page 1),
+  a KAOP items table (pages 1-2), and a prejudice/appreciation loadings table (pages 2-3). Exercises the
+  merger''s ability to keep unrelated tables separate while still merging their respective continuations.
+  Negative-case coverage for ''adjacent width-similar tables must not collapse''.'
+config: {}
+logical_tables:
+- members:
+  - 0
+  pages:
+  - 1
+  shape:
+  - 7
+  - 5
+  columns:
+  - Column_0
+  - n
+  - KAOP Total
+  - Prejudice
+  - Appreciation
+  first_row:
+  - Male
+  - '83'
+  - 112.59 (SD = 14.64)
+  - 51.14 (SD = 19.62)
+  - 61.44 (SD = 9.76)
+  last_row:
+  - Residence Urban
+  - '300'
+  - 50.21 (SD = 9.98)
+  - 46.69 (SD = 9.78)
+  - 65.53 (SD = 9.25)
+- members:
+  - 1
+  - 2
+  pages:
+  - 1
+  - 2
+  shape:
+  - 34
+  - 6
+  columns:
+  - Column_0
+  - M
+  - SD
+  - Skewness
+  - Kurtosis
+  - Item Homogeneity
+  first_row:
+  - IN It would probably be better if most old people living in residential units
+  - '3.69'
+  - '1.314'
+  - '-0.124'
+  - '-0.820'
+  - '0.145'
+  last_row:
+  - 17P Most older people need no more love and reassurance than anyone else
+  - '2.39'
+  - '1.387'
+  - '0.834'
+  - '0.020'
+  - '0.195'
+- members:
+  - 3
+  - 4
+  pages:
+  - 2
+  - 3
+  shape:
+  - 37
+  - 3
+  columns:
+  - Column_0
+  - Prejudice
+  - Appreciation
+  first_row:
+  - 9N Most old people bore others by their insistence on talking about the "good old days"
+  - '0.660'
+  - ''
+  last_row:
+  - Omega
+  - '0.934'
+  - '0.967'

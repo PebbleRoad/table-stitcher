@@ -416,6 +416,13 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
             log.debug(f"Spillover: Table {tB.idx} -> Table {tA.idx}")
             continue
 
+        # --- ORPHAN HEADER starts a new table: don't merge into tA ---
+        # A header-orphan fragment is structurally a lone header row for the
+        # NEXT table, not a continuation of the previous one. Skip the merge
+        # attempt; later passes pair it with its own data fragment.
+        if tB.is_header_orphan:
+            continue
+
         # --- WIDTH CHECK ---
         width_diff = abs(tA.width - tB.width)
         if cfg.require_same_width and width_diff > 0:
@@ -423,11 +430,31 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
         if width_diff > cfg.max_width_difference:
             continue
 
+        # --- HEADER ORPHAN → HEADERLESS DATA ---
+        # Header orphans often have truncated width (empty cells dropped by
+        # the parser); trust the data fragment's width when the two are
+        # consecutive and within the general width-diff tolerance.
+        if tA.is_header_orphan and tB.is_headerless:
+            uf.union(posA, posB)
+            log.debug(f"Header orphan → headerless: Table {tB.idx} -> Table {tA.idx}")
+            continue
+
         # --- HEADERLESS CONTINUATION ---
         if tB.is_headerless:
             if tA.width == tB.width:
                 uf.union(posA, posB)
                 log.debug(f"Width match: Table {tB.idx} -> Table {tA.idx}")
+                continue
+
+            # Width tolerance (±2) when layout confirms continuation —
+            # real-world parser drift on headerless fragments often runs to
+            # ±2 columns (empty cells collapsed, stray single cells added).
+            # Layout confirmation prevents false positives across unrelated
+            # tables with coincidentally close widths.
+            if width_diff <= 2 and layout_suggests_continuation(tA, tB, cfg):
+                uf.union(posA, posB)
+                log.debug(f"Width-drift headerless (±2 + layout): "
+                          f"Table {tB.idx} -> Table {tA.idx}")
                 continue
 
             row_sim = jaccard(tA.first_row_tokens, tB.first_row_tokens)

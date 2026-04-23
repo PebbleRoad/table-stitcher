@@ -2,11 +2,17 @@
 Tests for the Docling adapter — DataFrame conversion, injection, and pruning.
 """
 
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 from docling_core.types.doc import DoclingDocument, TableData, TableCell
 
-from table_stitcher.adapters.docling import _dataframe_to_docling_data, DoclingAdapter
+from table_stitcher.adapters.docling import (
+    _dataframe_to_docling_data,
+    _grid_to_dataframe,
+    DoclingAdapter,
+)
 from table_stitcher.adapters.base import TableStitcherAdapter
 from table_stitcher.models import LogicalTable
 
@@ -422,3 +428,72 @@ class TestPassThrough:
         result = stitcher.stitch(doc)
 
         assert result is doc
+
+
+# ---------------------------------------------------------------------------
+# Header-detection heuristics in _grid_to_dataframe
+#
+# When a fragment's real header is eaten into data on a given page (parser
+# artifact that shows up across retirement-portfolio and several PubTables-v2
+# medical docs), the adapter's first-row classifier must recognise the data
+# shape so the merger's headerless-continuation path can do its job.
+# ---------------------------------------------------------------------------
+
+
+def _mk_table(rows):
+    """Build a docling-shaped table stub from a list-of-lists of strings."""
+    grid = [[SimpleNamespace(text=c) for c in row] for row in rows]
+    return SimpleNamespace(data=SimpleNamespace(grid=grid))
+
+
+class TestHeaderlessDetection:
+
+    def test_comma_separated_decimal_flags_headerless(self):
+        # Retirement-portfolio pattern: first row is data but one cell is a
+        # comma-grouped dollar amount.
+        table = _mk_table([
+            ["", "Am Fds Trgt Dte Rtm 2055 R6 Fd", "13,085.03"],
+            ["ELEC DEF", "Am Fds Trgt Dte Rtm 2045 R6 Fd", "4,759.09"],
+        ])
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+
+    def test_value_with_paren_range_flags_headerless(self):
+        # Medical-stats pattern: "280 (176, 404)" median with IQR.
+        table = _mk_table([
+            ["Platelets #/nL", "Platelets #/nL", "280 (176, 404)"],
+            ["Platelets #/nL", "Platelets #/nL", "158 (123, 240)"],
+        ])
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+
+    def test_scientific_notation_flags_headerless(self):
+        table = _mk_table([
+            ["Result", "p-value", "7.0 x 10-7"],
+            ["A", "B", "1.0 x 10-3"],
+        ])
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+
+    def test_long_cell_majority_flags_headerless(self):
+        # Lit-review pattern: >half the first-row cells are sentence-long.
+        long_a = "Changes in choroidal thickness after cataract surgery"
+        long_b = "Prospective observational study of 80 eyes"
+        long_c = "Manual tracing of RPE and choroidal-scleral interface"
+        table = _mk_table([
+            ["Column_0", long_a, long_b, long_c, "Spectral domain"],
+            ["data1", "data2", "data3", "data4", "data5"],
+        ])
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+
+    def test_legitimate_short_headers_stay_header(self):
+        # Regression guard: ordinary headers (all short, not data-shaped)
+        # must NOT be flagged headerless.
+        table = _mk_table([
+            ["Contribution Type", "Investment Name", "Total"],
+            ["ELEC DEF", "Am Fds 2055", "110.12"],
+        ])
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is False
+        assert list(df.columns) == ["Contribution Type", "Investment Name", "Total"]

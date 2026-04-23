@@ -166,7 +166,6 @@ The Docling adapter illustrates this: `_dataframe_to_docling_data()` reuses the 
 | `use_layout_hint` | bool | True | Use vertical position signals |
 | `bottom_band_min` | float | 0.6 | Table A must end below this (0=top, 1=bottom) |
 | `top_band_max` | float | 0.4 | Table B must start above this |
-| `headerish_tokens` | Set[str] | (see code) | Tokens indicating header content |
 | `spillover_require_content_check` | bool | False | Require URL/ticket patterns for spillover |
 | `stitch_separator` | str | "\n" | Join character for split content |
 | `max_orphan_rows` | int | 2 | Max rows for header orphan classification |

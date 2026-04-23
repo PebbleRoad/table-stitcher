@@ -38,6 +38,8 @@ dev = [
     "pytest>=7.0",
     "docling>=2.0",
     "docling-core>=2.0",
+    "pyyaml>=6.0",
+    "reportlab>=4.0",
 ]
 
 [project.urls]

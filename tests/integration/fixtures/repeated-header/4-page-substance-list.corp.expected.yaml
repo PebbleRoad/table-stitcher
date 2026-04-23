@@ -1,0 +1,61 @@
+description: 'Controlled-substance list: pages 2-5 share repeated headers (SUBSTANCE, CSCN, ...) and merge
+  into one logical table. Page 1 fragment is headerless with different column names and stays separate
+  — exercises the repeated-header merge path without spuriously joining the first page.'
+config: {}
+logical_tables:
+- members:
+  - 0
+  pages:
+  - 1
+  shape:
+  - 29
+  - 5
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  - Column_4
+  first_row:
+  - (1-(4-Fluorobenzyl)-1H-indol-3-yl)(2,2,3,3- tetramethylcyclopropyl)methanone
+  - '7014'
+  - I
+  - N
+  - FUB-144
+  last_row:
+  - 19-Nor-5-androstenedione (estr-5-en-3,17-dione)
+  - '4000'
+  - III
+  - N
+  - ''
+- members:
+  - 1
+  - 2
+  - 3
+  - 4
+  pages:
+  - 2
+  - 3
+  - 4
+  - 5
+  shape:
+  - 95
+  - 5
+  columns:
+  - SUBSTANCE
+  - CSCN
+  - CSA SCH
+  - NARC
+  - OTHER NAMES
+  first_row:
+  - 1-androstenediol (3α,17β-dihydroxy-5α-androst-1-ene)
+  - '4000'
+  - III
+  - N
+  - ''
+  last_row:
+  - GLYPH<c=25,font=/AAAAAJ+ArialMT>α-Methyl-androst-4-ene-3,17-dione
+  - '4000'
+  - III
+  - N
+  - ''

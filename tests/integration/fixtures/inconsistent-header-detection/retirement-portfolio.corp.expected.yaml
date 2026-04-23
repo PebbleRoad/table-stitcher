@@ -1,0 +1,37 @@
+description: |
+  Retirement-portfolio statement spanning 4 pages, all width-3. The parser
+  extracts proper headers ('Contribution Type', 'Investment Name', 'Total')
+  only on page 1; on pages 2-4 the header row was eaten into the data, so
+  each subsequent fragment surfaces columns like
+  ('Column_0', '<fund-name>', '<dollar-value>').
+
+  The adapter's looks_like_data now recognizes comma-separated decimals
+  (e.g. '13,085.03'), so fragments 1-3 are correctly flagged headerless and
+  merge with fragment 0 via the width-match path.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  shape:
+  - 145
+  - 3
+  columns:
+  - Contribution Type
+  - Investment Name
+  - Total
+  first_row:
+  - ELEC DEF CTHUP
+  - Am Fds Trgt Dte Rtm 2025 R6 Fd
+  - '110.12'
+  last_row:
+  - ROTH ELECT DEF PLAN MERGER
+  - ''
+  - $221,836.07

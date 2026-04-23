@@ -1,0 +1,51 @@
+description: 'Drug list: 15 consecutive width-3 headerless fragments merge into a single 500-row logical
+  table. Longest continuation chain in our fixture set; exercises the headerless width-match path repeatedly.'
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  shape:
+  - 500
+  - 3
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  first_row:
+  - DRUG LIST - GENERIC MEDICINE
+  - DRUG LIST - GENERIC MEDICINE
+  - DRUG LIST - GENERIC MEDICINE
+  last_row:
+  - '500'
+  - Mycophenolate mofetil
+  - Immune mediators

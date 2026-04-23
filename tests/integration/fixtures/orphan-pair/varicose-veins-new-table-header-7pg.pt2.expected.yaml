@@ -1,0 +1,63 @@
+description: Seven-page bundle containing TWO distinct tables. Table 1 is a demographics survey (pages
+  1-4). Table 2 starts with a fresh 1-row header on page 4 ("Variables | With varicose veins | Without
+  varicose veins") followed by headerless data on pages 5-7. The structural header-orphan rule now flags
+  the page-4 fragment as header_orphan, and the merger's "header-orphan → headerless data" path trusts
+  the data fragment's width to link them.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  shape:
+  - 85
+  - 3
+  columns:
+  - Variables
+  - Frequency (n= 91)
+  - Percentage (%)
+  first_row:
+  - Gender
+  - ''
+  - ''
+  last_row:
+  - Both
+  - '1'
+  - '2.6'
+- members:
+  - 4
+  - 5
+  - 6
+  - 7
+  pages:
+  - 4
+  - 5
+  - 6
+  - 7
+  shape:
+  - 104
+  - 5
+  columns:
+  - Gender
+  - ''
+  - ''
+  - col_3
+  - col_4 0.547
+  first_row:
+  - ''
+  - ''
+  - ''
+  - '47'
+  - ''
+  last_row:
+  - Both
+  - '1'
+  - ''
+  - ''
+  - ''

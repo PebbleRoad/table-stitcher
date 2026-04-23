@@ -1,0 +1,50 @@
+description: Seven-page antimicrobial-literature-review table. Extraction produces widths drifting 7/6/5/7/6/6/4
+  — maximum pair-wise drift of 2. All fragments headerless. Merger's width-drift tolerance (±2 with layout
+  confirmation) unifies all seven pages into one logical table.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  shape:
+  - 41
+  - 7
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  - Column_4
+  - Column_5
+  - Column_6
+  first_row:
+  - Population
+  - ''
+  - 30 TB patients 36 relatives 62 people living with HIV
+  - 16 residents interviewed 16 focus groups (99
+  - residents) 12 rural households
+  - 17 residents interviewed 6 focus groups (43 residents) 15 residents 1 focus group (12 pharmacy customers)
+    12 focus groups 16 residents interviewed 4 focus groups 62 residents interviewed
+  - 100 households 30 community health 14 focus groups 17 residents interviewed 7 focus groups (42 residents)
+    1811 low-income 6 focus groups (36 women)
+  last_row:
+  - Author, year
+  - Jakupi 2019 Kaae 2020
+  - Westerling 2020
+  - Canterero-Arevalo 2022
+  - ''
+  - ''
+  - ''

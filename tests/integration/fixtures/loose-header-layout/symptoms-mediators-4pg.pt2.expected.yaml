@@ -1,0 +1,29 @@
+description: Four-page symptoms/mediators table where page 2's header shows 'Table 1 (continued)' instead
+  of 'Symptoms'. Strict header Jaccard is below 0.6 for that boundary but loose+layout allows the merge.
+  Exercises the loose-match pathway the strict-match cases miss.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  shape:
+  - 93
+  - 2
+  columns:
+  - Symptoms
+  - Potential mediators
+  first_row:
+  - 'Dermatologie manifestations
+
+    Flush, erythema'
+  - Histamine, Bradykinin
+  last_row:
+  - Inhibits the proliferation of tumor cell
+  - Oncostatin M

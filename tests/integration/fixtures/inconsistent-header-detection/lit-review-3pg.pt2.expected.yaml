@@ -1,0 +1,58 @@
+description: Three-page literature-review table from a medical meta-analysis. Widths drift 11/12/11 across
+  fragments. All are correctly flagged headerless by the adapter, then the merger's width-drift tolerance
+  (±2 when layout confirms continuation) joins them into one logical table.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  pages:
+  - 1
+  - 2
+  - 3
+  shape:
+  - 13
+  - 11
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  - Column_4
+  - Column_5
+  - Column_6
+  - Column_7
+  - Column_8
+  - Column_9
+  - Column_10
+  first_row:
+  - Noda et al. 14
+  - Japan
+  - Long-term norease in subtoveal chordidar thicknees after surgery for senila cataracte
+  - =---==
+  - ''
+  - ''
+  - ''
+  - ''
+  - measurement
+  - Male gender and thicker basoline subfoveat choroldal thickness
+  - Baseline subfoveal charolda! thickness was 198.8 um. increasing significantly et postoperative 1.
+    3, and 6 morths (208.9 um, 210.2 pm, 209.3 um; P < 0.0001) 69.0% maintsined incressed subfoveal choroitel
+    thickness far 6 months. Male gender and thicker basaline choroid predicted larger increases.
+  last_row:
+  - Pierru et al.
+  - France
+  - Measurement of Subfoweal Choroidal Thickness Atter Cataract Surgery Opmaimology n Enhance Depeh Imaging
+    Optical Cohérence
+  - =-=-
+  - ''
+  - ''
+  - Enhanced Depth Imaging Opeical Coherence (EDI-OCT)
+  - Tomography
+  - SFCT measured fram the outer part of the Subfoveal choroidal hyperrefective line corresponding to
+    the retinal pigment epithelium (RPE) 1o Une inner sclera.
+  - Cataract surgery
+  - In this study, SFCT at baseline was 224 = 75 pm. Following cataract surgery, SFCT significandy increased
+    at Day 1. Month 1, and Month 3. CRT also increased. Three patients developed PCME with the greatest
+    SFCT progressian after surgery. SFCT changes preceded PCME

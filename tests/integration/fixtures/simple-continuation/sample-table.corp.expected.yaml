@@ -1,0 +1,15 @@
+description: |
+  Smallest possible multi-page table: two 2-row fragments on pages 1 and 2 with
+  matching width merge into one 4-row logical table. Baseline smoke test for the
+  sequential width-match path in merge_multipage_tables().
+
+# Optional: override MultiPageConfig fields. Empty/omitted means defaults.
+config: {}
+
+logical_tables:
+  - members: [0, 1]
+    pages: [1, 2]
+    shape: [4, 5]
+    columns: [Column_0, "Column 1", "Column 2", "Column 3", "Column 4"]
+    first_row: ["Row 1", "DATA", "DATA", "DATA", "DATA"]
+    last_row:  ["Row 4", "DATA", "DATA", "DATA", "DATA"]

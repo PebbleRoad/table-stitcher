@@ -1,0 +1,32 @@
+description: Two-page GO biological-process table where OCR introduces noise between pages (page-1 header
+  'Jumber FD' vs page-2 header 'Number FDR of g...'). Strict Jaccard would fail on that column but the
+  rest of the header matches well enough for the loose-match pathway.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 16
+  - 4
+  columns:
+  - Biological process
+  - Jumber FD
+  - Column_2
+  - Genes
+  first_row:
+  - Positive regulation of ERK1 and ERK2 cascade
+  - '56'
+  - ''
+  - 2.62E-08 ARHGAP8, FLT4, ITGB3, HTR2B, HTR2C, FGF2, CX3CL1, ICAM1, PYCARD, C1QTNF3, EDNRA, CYSLTR2,
+    GLIPR2, CD36, LGALS9, NPY5R, DCC, IL1B, RARA, CHI3L1, CD44, CCL12, C5AR2, C5AR1, NOD2, C3, CCL9, THPO,
+    GPNMB, CCL7, CCL6, ERBB4, NPY, PDGFD CCL4, GCNT2, CCL3, CCL2, CCL19, NTSR2, CCR1, JUN, CCL22, TGFB1,
+    CCL20, CFLAR, SCIMP, MT3, ESR1, EPOR, IL6, GPR183, TRPV4, FGF 18, F2RL1
+  last_row:
+  - Lipopolysaccharide-mediated signaling pathway
+  - '12'
+  - '0.028'
+  - LYN, TGFB1, IRAK2, NOS3, IL1B, CCL3, CCL2, LBP, CD14, TICAM1, TNF, MYD88

@@ -1,0 +1,35 @@
+description: Three-page qualitative results table with repeated 'Theme / Exemplar quote(s)' header on
+  every page. Tests the sequential merge chain across more than one continuation.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  pages:
+  - 1
+  - 2
+  - 3
+  shape:
+  - 18
+  - 2
+  columns:
+  - Theme
+  - Exemplar quote(s)
+  first_row:
+  - General support for implementing digital therapeutics
+  - ''
+  last_row:
+  - Supportive of offering multiple apps for patients with AUD if there is good evidence to do so and
+    it's clear when to use which app
+  - I personally like [having multiple digital therapeutic options] because then I'd be able to say "here
+    are three things I can offer you that could poten- tially meet your needs." And then either based
+    on my description, they can choose, or they can go in and see which one they prefer...! just feel
+    there isn't one that's the perfect thing so being able to have more than one to choose from and go
+    "yeah, out of all of them. I think that's the one that works for me the best." (#16, LICSW) I don't
+    see a conflict [with offering multiple apps]. I just think that you would really need to make it clear
+    like who goes where. If you have too many apps doing the same exact thing, like everyone with alcohol
+    use has three different options, I think that's probably going to be confusing both for patients,
+    just because I think that choosing something once you're at that point probably feels really overwhelming
+    to begin with..... Otherwise you're probably going to have someone that you just pick your favorite
+    app and everyone goes to the favorite app, right? (#2, PCP)

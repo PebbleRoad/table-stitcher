@@ -1,0 +1,48 @@
+description: Five-page medical case-series table. Page 1's 'header' row was actually eaten into data by
+  the parser ('Beuthein et al., ... 63/F ...'), but pages 3-5 are cleanly headerless and all match width
+  9. Merger joins all four fragments via width-match path.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  pages:
+  - 2
+  - 3
+  - 4
+  - 5
+  shape:
+  - 102
+  - 9
+  columns:
+  - Beuthein et al., 2004(20) RA
+  - Column_1
+  - 63/F
+  - Adalimumab 6 weeks
+  - Column_4
+  - Column_5
+  - Papulopustular Exanthema
+  - Steroids Discontinuation
+  - Resolution
+  first_row:
+  - ''
+  - RA
+  - 47/F
+  - InfliximaD
+  - 2 months
+  - 'No'
+  - Psoriasis
+  - Topical Corticosteroids + Salicylic Acid
+  - Partial Resolution
+  last_row:
+  - Kanelleas et al.. 2022 [55]
+  - HS
+  - 4 pts (2M/2F)
+  - Adalimumab 5 months
+  - ''
+  - 50% Had a Family History
+  - Plaque Psoriasis
+  - ''
+  - ''

@@ -4,20 +4,6 @@ from typing import List, Set, Optional, Dict
 import pandas as pd
 
 
-# Default tokens that suggest a row is a header (not data)
-DEFAULT_HEADERISH_TOKENS: Set[str] = {
-    # Common table headers
-    "no", "sno", "s", "id", "name", "type", "status", "description",
-    "date", "time", "period", "version", "environment", "reference",
-    "comment", "remarks", "notes", "action", "category", "item",
-    "value", "unit", "total", "count", "number",
-    # Business/reporting terms
-    "severity", "level", "availability", "downtime", "scheduled",
-    "operation", "monthly", "weekly", "daily", "target", "actual",
-    "variance", "met", "sla", "system", "application",
-}
-
-
 @dataclass
 class MultiPageConfig:
     """
@@ -72,12 +58,6 @@ class MultiPageConfig:
     """
 
     # --- Header/Orphan Detection ---
-    headerish_tokens: Set[str] = field(default_factory=lambda: DEFAULT_HEADERISH_TOKENS.copy())
-    """Tokens that suggest a cell contains header text, not data."""
-
-    min_headerish_tokens: int = 1
-    """Minimum header-like tokens required to consider a row as headers."""
-
     max_orphan_rows: int = 2
     """Maximum rows for a table to be considered a 'header orphan'."""
 

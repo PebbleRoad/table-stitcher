@@ -1,0 +1,43 @@
+description: Six-page gene-symbol table where headers drift per page (parser picks different columns as
+  'Gene Symbol Len...' each time). Widths match at 6 throughout so every fragment qualifies for the headerless
+  width-match path — 241-row merge without relying on header Jaccard.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  shape:
+  - 241
+  - 6
+  columns:
+  - Genome Name
+  - Gene Symbol Length (bp) Genome Name
+  - Column_2
+  - Column_3
+  - Gene Symbol Length (bp)
+  - Column_5
+  first_row:
+  - Corynebacterium glutamicum ATCC 21831
+  - zupT
+  - '792'
+  - Marivirga tractuosa H-43, DSM 4126
+  - muts2
+  - '2397'
+  last_row:
+  - ''
+  - ''
+  - ''
+  - Trichormus variabilis ATCC 29413
+  - all4426
+  - ''

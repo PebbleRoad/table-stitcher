@@ -35,3 +35,6 @@ htmlcov/
 # Test output
 *.enriched.*
 *.stitched.*
+
+# Dataset cache (PubTables-v2 etc.)
+.temp/

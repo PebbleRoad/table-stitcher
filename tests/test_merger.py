@@ -14,6 +14,7 @@ from table_stitcher.merger import (
     is_numeric_like_colnames,
     is_spillover_fragment,
     layout_suggests_continuation,
+    stitch_split_cells,
 )
 
 
@@ -362,3 +363,80 @@ class TestMergeDecisionSignals:
         ]
         results = merge_multipage_tables(metas, MultiPageConfig())
         assert len(results) == 1
+
+
+# ---------------------------------------------------------------------------
+# stitch_split_cells — post-merge row folding
+#
+# Triggered after a multi-page merge when a row has only one non-empty cell;
+# that content is treated as continuation of the previous row and folded in.
+# ---------------------------------------------------------------------------
+
+class TestStitchSplitCells:
+
+    def test_single_nonempty_cell_folds_into_previous_row(self):
+        df = pd.DataFrame([
+            ["A-1", "Alpha", "first line"],
+            ["", "", "second line"],  # only col 2 populated → continuation
+        ], columns=["ID", "Name", "Notes"])
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 3)
+        assert out.iloc[0, 2] == "first line\nsecond line"
+
+    def test_two_consecutive_continuation_rows_both_fold(self):
+        df = pd.DataFrame([
+            ["A-1", "Alpha", "line1"],
+            ["", "", "line2"],
+            ["", "", "line3"],
+        ], columns=["ID", "Name", "Notes"])
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 3)
+        assert out.iloc[0, 2] == "line1\nline2\nline3"
+
+    def test_custom_separator_is_respected(self):
+        df = pd.DataFrame([
+            ["A-1", "Alpha", "first"],
+            ["", "", "second"],
+        ], columns=["ID", "Name", "Notes"])
+        out = stitch_split_cells(df, separator=" | ")
+        assert out.iloc[0, 2] == "first | second"
+
+    def test_row_with_two_nonempty_cells_is_not_folded(self):
+        df = pd.DataFrame([
+            ["A-1", "Alpha", "first"],
+            ["A-2", "", "second"],  # 2 non-empty cells → not a continuation
+        ], columns=["ID", "Name", "Notes"])
+        out = stitch_split_cells(df)
+        assert out.shape == (2, 3)
+
+    def test_single_row_df_returned_unchanged(self):
+        df = pd.DataFrame([["x", "y", "z"]], columns=["A", "B", "C"])
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 3)
+        assert out.iloc[0].tolist() == ["x", "y", "z"]
+
+    def test_empty_df_returned_unchanged(self):
+        df = pd.DataFrame(columns=["A", "B", "C"])
+        out = stitch_split_cells(df)
+        assert out.shape == (0, 3)
+
+    def test_url_continuation_routes_to_url_named_column(self):
+        # When the continuation cell contains a URL and there's a column
+        # named for links/refs, the URL lands there even if it originally
+        # appeared under a different column.
+        df = pd.DataFrame([
+            ["A-1", "Alpha", "prev-link"],
+            ["", "https://example.com/continuation", ""],
+        ], columns=["ID", "Name", "Link"])
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 3)
+        assert "https://example.com/continuation" in out.iloc[0, 2]
+
+    def test_continuation_into_empty_previous_cell(self):
+        df = pd.DataFrame([
+            ["A-1", "Alpha", ""],        # previous row's Notes is empty
+            ["", "", "continuation"],
+        ], columns=["ID", "Name", "Notes"])
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 3)
+        assert out.iloc[0, 2] == "continuation"

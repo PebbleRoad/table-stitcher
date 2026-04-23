@@ -1,0 +1,38 @@
+description: Two-page RRT-outcomes table where the parser extracts real headers on page 1 but the page-2
+  fragment is completely headerless. Both are width 7. Exercises the 'header → headerless continuation'
+  transition with a mid-range width (most existing fixtures are 2-3 wide).
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 38
+  - 7
+  columns:
+  - Parameter
+  - Parameter
+  - Total (n=40)
+  - Fully Resolved (n=15)
+  - Non-RRT Dependent (n=13)
+  - RRT Dependent (n=12)
+  - value
+  first_row:
+  - n (%)
+  - Male
+  - 24(60)
+  - 9 (37.5)
+  - 7(29.2)
+  - 8(33.3)
+  - '0.808'
+  last_row:
+  - Mean Duration of Hospital Stay (days)
+  - Mean Duration of Hospital Stay (days)
+  - 17.28 + 8.03
+  - 12.93 ₺ 1.53
+  - 19.85 ₺ 2.95
+  - 19.92 + 1.27
+  - '0.025'

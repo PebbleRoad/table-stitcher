@@ -1,0 +1,25 @@
+description: |
+  Synthetic fixture (see _synth/generate.py::build_page_gap_too_large).
+  Page 1 carries a small revenue table; pages 2-3 are narrative text only;
+  page 4 carries a completely unrelated HR table. The two tables are
+  separated by a 3-page gap.
+
+  Expected behavior: with default max_page_gap=1, the merger must NOT link
+  them. Two distinct logical tables, preserved as extracted. This is the
+  primary negative case for the page-adjacency rule.
+
+config: {}
+
+logical_tables:
+  - members: [0]
+    pages: [1]
+    shape: [4, 3]
+    columns: [Region, Revenue, Growth]
+    first_row: ["North", "1,200", "12%"]
+    last_row:  ["West",  "1,080", "4%"]
+  - members: [1]
+    pages: [4]
+    shape: [3, 3]
+    columns: [Employee, Title, "Hire Date"]
+    first_row: ["Alice", "Engineer", "2021-03-15"]
+    last_row:  ["Carol", "Manager",  "2019-07-28"]

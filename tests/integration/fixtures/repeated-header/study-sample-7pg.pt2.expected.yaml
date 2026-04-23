@@ -1,0 +1,48 @@
+description: Seven-page study-sample table (meta-analysis). Every page carries the same 6-column header
+  (Authors, Region/Year, Study Objective, Method, Sample, Population); all seven fragments merge via strict
+  header Jaccard. Longest repeated-header chain in our fixture set (and the longest PT2 chain period).
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  shape:
+  - 33
+  - 6
+  columns:
+  - Authors
+  - Region/Year
+  - Study Objective
+  - Method
+  - Sample
+  - Results
+  first_row:
+  - Tian et al. [26]
+  - hui and Shando vinces, China, 20
+  - To investigate the correlations of greenness exposure with test anxiety among university students
+    during COVID-19 lockdowns.
+  - 'Cross-sectional study with perceived campus greenness (5-point Likert scale: quality, visibility,
+    abundance, usage, accessibility) and Normalized Difference Vegetation Index (NDVI) for objective greenness'
+  - 2609 university students
+  - NDVI 1500-m correlated with lower test anxiety physical activity may partially mediate this association.
+    Increased campus greenness may alleviate test anxiety among Chinese university students.
+  last_row:
+  - Total 27,955
+  - Total 27,955
+  - Total 27,955
+  - Total 27,955
+  - Total 27,955
+  - Total 27,955

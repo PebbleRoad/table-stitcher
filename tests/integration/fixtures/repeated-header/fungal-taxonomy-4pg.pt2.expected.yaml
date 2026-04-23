@@ -1,0 +1,39 @@
+description: Four-page fungal taxonomy table where extracted widths drift 6/5/7/7 but repeated 'Species,
+  Strain number, LSU, ...' header survives on every page. Merges via strict header Jaccard despite width
+  variance. Positive case showing repeated-header path tolerates ±2 width drift when Jaccard is strong.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  - 3
+  pages:
+  - 1
+  - 2
+  - 3
+  - 4
+  shape:
+  - 152
+  - 6
+  columns:
+  - Species
+  - Strain number
+  - LSU
+  - Column_3
+  - tef1-a
+  - Column_5
+  first_row:
+  - Angustimassarina populi
+  - MFLUCC 13-0034
+  - ''
+  - ''
+  - KR075164
+  - ''
+  last_row:
+  - Xenomonodictys iranica
+  - CBS 147181
+  - MW175406
+  - ''
+  - N/A
+  - N/A

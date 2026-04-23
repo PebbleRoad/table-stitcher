@@ -446,14 +446,16 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
                 log.debug(f"Width match: Table {tB.idx} -> Table {tA.idx}")
                 continue
 
-            # Width tolerance (±2) when layout confirms continuation —
+            # Width tolerance when layout confirms continuation —
             # real-world parser drift on headerless fragments often runs to
-            # ±2 columns (empty cells collapsed, stray single cells added).
-            # Layout confirmation prevents false positives across unrelated
-            # tables with coincidentally close widths.
-            if width_diff <= 2 and layout_suggests_continuation(tA, tB, cfg):
+            # a couple of columns (empty cells collapsed, stray single
+            # cells added). Layout confirmation prevents false positives
+            # across unrelated tables with coincidentally close widths.
+            if (width_diff <= cfg.headerless_width_tolerance
+                    and layout_suggests_continuation(tA, tB, cfg)):
                 uf.union(posA, posB)
-                log.debug(f"Width-drift headerless (±2 + layout): "
+                log.debug(f"Width-drift headerless "
+                          f"(±{cfg.headerless_width_tolerance} + layout): "
                           f"Table {tB.idx} -> Table {tA.idx}")
                 continue
 

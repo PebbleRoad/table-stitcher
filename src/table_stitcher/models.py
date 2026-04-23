@@ -29,6 +29,14 @@ class MultiPageConfig:
     max_width_difference: int = 4
     """Maximum allowed difference in column count for merging."""
 
+    headerless_width_tolerance: int = 2
+    """
+    Width-drift tolerance (±N columns) for the headerless-continuation path
+    when vertical layout confirms the pages are adjacent-and-stacked.
+    Tighter than `max_width_difference` because the layout guard alone
+    isn't enough to prevent false merges at large width deltas.
+    """
+
     # --- Similarity Thresholds ---
     header_sim_strict: float = 0.6
     """Jaccard similarity threshold for 'repeated header' detection."""

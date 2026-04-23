@@ -41,7 +41,9 @@
       "Bash(tee /tmp/install_v2.log)",
       "Bash(python3 -c \"import reportlab; print\\(reportlab.Version\\)\")",
       "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m tests.integration.fixtures._synth.generate)",
-      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/test_merger.py -v)"
+      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/test_merger.py -v)",
+      "Bash(git rm *)",
+      "Bash(python3 -m pip show docling docling-core)"
     ]
   }
 }

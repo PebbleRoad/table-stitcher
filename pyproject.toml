@@ -31,13 +31,13 @@ dependencies = [
 
 [project.optional-dependencies]
 docling = [
-    "docling>=2.0",
-    "docling-core>=2.0",
+    "docling>=2.60,<3",
+    "docling-core>=2.50,<3",
 ]
 dev = [
     "pytest>=7.0",
-    "docling>=2.0",
-    "docling-core>=2.0",
+    "docling>=2.60,<3",
+    "docling-core>=2.50,<3",
     "pyyaml>=6.0",
     "reportlab>=4.0",
 ]

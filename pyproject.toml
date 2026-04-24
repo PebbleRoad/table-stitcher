@@ -53,3 +53,10 @@ packages = ["src/table_stitcher"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: exercises docling + OCR against real PDFs; slow (~3 min) and needs model downloads",
+]
+# Default: skip integration tests. They're heavyweight (OCR, model downloads)
+# and can abort on local setups where docling/torch dependencies are unstable.
+# Opt in with `pytest -m integration` or `pytest --override-ini='addopts='`.
+addopts = "-m 'not integration'"

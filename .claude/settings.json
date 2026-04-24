@@ -49,7 +49,11 @@
       "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/integration/ -v -k \"edinet\")",
       "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/test_merger.py -v -k \"tokenize\")",
       "Bash(python3 -m tests.integration._tools.regenerate_expected tests/integration/fixtures/multilingual/corporate-history-2pg.edinet.pdf --clear-xfail --description 'Two-page corporate history table from a Japanese EDINET filing. Both pages carry identical 2-column Japanese headers \\(年⽉ / 概要\\). Exercises the repeated-header Jaccard path against pure CJK text — merges because tokenize\\(\\) emits one token per CJK character, giving Jaccard 1.0 on identical headers.')",
-      "Bash(python3 -m tests.integration._tools.regenerate_expected tests/integration/fixtures/multilingual/subsidiaries-4pg.edinet.pdf --clear-xfail --description 'Four-page subsidiaries list from a Japanese EDINET filing. Three fragments \\(widths 6/6/7\\), all with identical 6-column Japanese headers \\(名称 / 住所 / 資本⾦⼜は出資⾦ / 主要な事業の内容 / 議決権の所有割合 / 関係内容\\). The width-7 final fragment is the summary-rows continuation of the same table. All three merge on CJK-aware header Jaccard.')"
+      "Bash(python3 -m tests.integration._tools.regenerate_expected tests/integration/fixtures/multilingual/subsidiaries-4pg.edinet.pdf --clear-xfail --description 'Four-page subsidiaries list from a Japanese EDINET filing. Three fragments \\(widths 6/6/7\\), all with identical 6-column Japanese headers \\(名称 / 住所 / 資本⾦⼜は出資⾦ / 主要な事業の内容 / 議決権の所有割合 / 関係内容\\). The width-7 final fragment is the summary-rows continuation of the same table. All three merge on CJK-aware header Jaccard.')",
+      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest -m integration tests/integration/test_fixtures.py::test_fixture_stitches_as_expected -k \"varicose\")",
+      "Bash(python3 -m tests.integration._tools.regenerate_expected tests/integration/fixtures/orphan-pair/varicose-veins-new-table-header-7pg.pt2.pdf)",
+      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/ tests/ -m \"integration\")",
+      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest -m integration tests/)"
     ]
   }
 }

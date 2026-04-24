@@ -26,7 +26,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: unit tests
-        run: pytest tests/test_merger.py tests/test_docling_adapter.py -v
+        # Default addopts in pyproject excludes the integration marker, so
+        # this run is already unit-only. -v adds per-case outcomes.
+        run: pytest tests/ -v
 
   integration:
     # Slow layer. Docling downloads layout / table-structure / OCR models on
@@ -50,4 +52,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: integration tests
-        run: pytest tests/integration/ -v
+        # Integration tests are gated behind the `integration` marker in
+        # pyproject; opt in explicitly here.
+        run: pytest -m integration tests/ -v

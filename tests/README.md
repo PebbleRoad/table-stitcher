@@ -12,7 +12,10 @@ the output. No real PDFs, no parser.
 - `test_merger.py` — builds synthetic `TableMeta` objects in memory, exercises
   each merge-decision branch (spillover, headerless width-match, repeated
   header, orphan handling, page-gap guard, non-contiguous extraction guard)
-  and verifies `stitch_split_cells` folds continuation rows correctly.
+  and verifies `stitch_split_cells`, merge traces, and width-overflow policies.
+- `test_tablemeta_fixtures.py` — loads parser-neutral YAML fixtures from
+  `tests/fixtures/tablemeta/` and runs the core merger directly. This is the
+  fast compatibility layer for new adapters.
 - `test_docling_adapter.py` — exercises the adapter in both directions:
   `_grid_to_dataframe` header-detection heuristics on stub docling tables,
   `_dataframe_to_docling_data` injection (incl. multi-row headers), and the
@@ -32,18 +35,22 @@ Categories map 1:1 to merger signals (e.g. `repeated-header/`,
 
 ## Running
 
-```bash
-# Unit tests only (fast iteration)
-pytest tests/test_merger.py tests/test_docling_adapter.py
+Integration tests are gated behind the `integration` marker and **skipped by
+default** — they need docling + OCR models and take ~3 min. Unit tests run
+every time.
 
-# Everything, including integration
+```bash
+# Default — unit tests only (fast iteration, no OCR, no model download)
 pytest tests/
 
-# One integration case
-pytest tests/integration/ -k "study-sample"
+# Opt in to integration
+pytest -m integration tests/
 
-# Verbose with full per-case outcomes
-pytest tests/integration/ -v
+# Both layers together
+pytest -m "integration or not integration" tests/
+
+# One integration case by name
+pytest -m integration tests/integration/ -k "study-sample"
 ```
 
 ## Timings
@@ -65,6 +72,10 @@ tests/integration/fixtures/
 ├── _synth/generate.py                   # reproducible source for .synth.pdf fixtures
 └── _tools/regenerate_expected.py        # re-capture expected.yaml after merger changes
 ```
+
+Parser-neutral core fixtures live separately under
+`tests/fixtures/tablemeta/*.yaml`. Add these first when a behavior can be
+represented as `TableMeta`; reserve PDF fixtures for adapter/parser behavior.
 
 Provenance tags in current use: `.corp` (corporate/private document),
 `.pt2` (PubTables-v2 test split), `.synth` (hand-built via reportlab).

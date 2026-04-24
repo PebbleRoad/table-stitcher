@@ -27,7 +27,7 @@ your parser          adapter.extract()      merger          adapter.inject()    
  Camelot, HTML…)                            Table]            results back         HTML, JSON…)
 ```
 
-The core engine only ever speaks `TableMeta` — a small dataclass carrying a DataFrame, page number, column count, header tokens, and optional bbox. Your job is a thin adapter with two methods:
+The core engine only ever speaks `TableMeta` — a small dataclass carrying a DataFrame, page number, column count, header tokens, and optional bbox. It returns `LogicalTable` objects with merged data plus `MergeTrace` explanations for the decisions it made. Your job is a thin adapter with two methods:
 
 - `extract(doc, cfg) -> List[TableMeta]` — translate your parser's native table objects into `TableMeta`
 - `inject(doc, logical_tables) -> doc` — write merged results back into your native format
@@ -115,6 +115,12 @@ Same column count = same table structure. This is the primary merge signal.
 | 5 columns | 4 columns | Check other signals |
 | 5 columns | 1 column | Spillover detection |
 
+When a continuation fragment is wider than the anchor, the default policy is
+data-preserving: extra trailing cells are kept in explicit `_extra_N` columns.
+Use `width_overflow_policy="warn_drop"` for the older lossy behavior,
+`"fail"` when you want strict no-overflow enforcement, or `"merge_tail"` when
+overflow cells should be appended into the final canonical column.
+
 ### 3. Spillover Detection
 
 A 1-column headerless fragment following a multi-column table is almost certainly content that overflowed from the last cell. It gets stitched back automatically.
@@ -138,7 +144,7 @@ The adapter protocol has exactly **two methods**:
 | `extract(doc, cfg)` | Read table fragments from your document -> `List[TableMeta]` |
 | `inject(doc, logical_tables)` | Write merged results back into your document |
 
-The merge engine (`merger.py`) never sees parser-native objects. It works entirely with `TableMeta` (pandas DataFrames + page metadata).
+The merge engine (`merger.py`) never sees parser-native objects. It works entirely with `TableMeta` (pandas DataFrames + page metadata), and each `LogicalTable` includes `merge_reason`, `merge_traces`, and `warnings` so downstream integrations can audit why fragments merged and whether any risky alignment happened.
 
 ### Adapter Design Principle: Respect the Incoming Structure
 
@@ -162,6 +168,7 @@ The Docling adapter illustrates this: `_dataframe_to_docling_data()` reuses the 
 | `max_page_gap` | int | 1 | Maximum pages between fragments |
 | `require_same_width` | bool | False | Require identical column counts |
 | `max_width_difference` | int | 4 | Column count tolerance |
+| `width_overflow_policy` | str | "preserve_extra" | How to handle continuation fragments wider than the anchor: "preserve_extra", "warn_drop", "fail", or "merge_tail" |
 | `headerless_width_tolerance` | int | 2 | Width-drift tolerance for headerless pairs when layout confirms continuation |
 | `header_sim_strict` | float | 0.6 | Header similarity threshold |
 | `header_sim_loose` | float | 0.3 | Lower threshold (with layout confirmation) |

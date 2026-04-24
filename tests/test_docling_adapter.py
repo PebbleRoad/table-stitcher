@@ -356,6 +356,38 @@ class TestInjection:
         assert "#/tables/3" in remaining_refs
         assert len(remaining_refs) == 2
 
+    def test_satellite_table_data_is_cleared(self):
+        """
+        Satellite Table objects stay in doc.tables (removing would invalidate
+        position-based self_refs), but their .data and .prov must be cleared
+        so downstream code iterating doc.tables directly doesn't see stale
+        fragment content that's already been merged into the anchor.
+        """
+        from types import SimpleNamespace
+        doc = _build_doc_with_tables(3)
+        doc.tables[1].prov = [SimpleNamespace(page_no=2, bbox=None)]
+
+        merged_df = pd.DataFrame({"A": ["merged"]})
+        logical_tables = [
+            LogicalTable(0, [0, 1], [1, 2], merged_df),  # table 1 is satellite
+            LogicalTable(1, [2], [3], pd.DataFrame({"B": ["solo"]})),
+        ]
+
+        adapter = DoclingAdapter()
+        adapter.inject(doc, logical_tables)
+
+        # Satellite is still present (preserving self_refs), but emptied.
+        assert len(doc.tables) == 3
+        assert doc.tables[1].self_ref == "#/tables/1"
+        assert doc.tables[1].data.num_rows == 0
+        assert doc.tables[1].data.num_cols == 0
+        assert doc.tables[1].data.table_cells == []
+        assert doc.tables[1].prov == []
+        # Anchor still has content.
+        assert doc.tables[0].data.num_rows > 0
+        # Unrelated table untouched.
+        assert doc.tables[2].data is not None
+
 
 # ---------------------------------------------------------------------------
 # Pass-through guarantee tests

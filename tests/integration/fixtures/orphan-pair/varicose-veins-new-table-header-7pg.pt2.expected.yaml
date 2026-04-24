@@ -41,7 +41,7 @@ logical_tables:
   - 6
   - 7
   shape:
-  - 104
+  - 74
   - 5
   columns:
   - Gender

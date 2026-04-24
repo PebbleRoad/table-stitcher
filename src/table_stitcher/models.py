@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Set, Optional, Dict
+from typing import Any, List, Set, Optional, Dict, Literal
 
 import pandas as pd
 
@@ -28,6 +28,16 @@ class MultiPageConfig:
 
     max_width_difference: int = 4
     """Maximum allowed difference in column count for merging."""
+
+    width_overflow_policy: Literal["preserve_extra", "warn_drop", "fail", "merge_tail"] = "preserve_extra"
+    """
+    How to handle a continuation fragment with more columns than the anchor.
+
+    - ``preserve_extra``: keep trailing columns as ``_extra_N`` columns.
+    - ``warn_drop``: drop trailing columns after logging a warning.
+    - ``fail``: raise ``ValueError`` instead of losing data.
+    - ``merge_tail``: append trailing cell values into the final canonical cell.
+    """
 
     headerless_width_tolerance: int = 2
     """
@@ -108,6 +118,17 @@ class TableMeta:
 
 
 @dataclass
+class MergeTrace:
+    """Explain one adjacent-table merge decision."""
+    left_idx: int
+    right_idx: int
+    merged: bool
+    reason: str
+    signals: Dict[str, Any] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+
+@dataclass
 class LogicalTable:
     """A merged logical table spanning potentially multiple pages."""
     logical_index: int
@@ -115,3 +136,5 @@ class LogicalTable:
     pages: List[int]
     df: pd.DataFrame
     merge_reason: str = ""
+    merge_traces: List[MergeTrace] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)

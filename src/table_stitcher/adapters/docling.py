@@ -618,6 +618,18 @@ class DoclingAdapter:
 
                 refs_to_remove.add(satellite_table.self_ref)
 
+                # Clear the satellite in place so downstream code iterating
+                # doc.tables directly doesn't see stale fragment content.
+                # We don't pop the entry because self_refs are position-based
+                # (`#/tables/N` = list index N) — removing an element would
+                # shift every subsequent self_ref and body reference. The
+                # satellite becomes an empty shell, still present but
+                # without data or prov.
+                satellite_table.data = TableData(
+                    num_rows=0, num_cols=0, table_cells=[], grid=[]
+                )
+                satellite_table.prov = []
+
         # Prune satellite references from body hierarchy
         removed_count = 0
 

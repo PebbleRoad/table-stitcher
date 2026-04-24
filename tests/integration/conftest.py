@@ -21,6 +21,19 @@ import yaml
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def pytest_collection_modifyitems(config, items):
+    """
+    Auto-tag every test under tests/integration/ with the `integration`
+    marker. The default addopts in pyproject excludes this marker, so the
+    heavy OCR-dependent suite is opt-in via `pytest -m integration`.
+    """
+    integration_dir = Path(__file__).parent.resolve()
+    mark = pytest.mark.integration
+    for item in items:
+        if Path(item.fspath).resolve().is_relative_to(integration_dir):
+            item.add_marker(mark)
+
+
 # ---------------------------------------------------------------------------
 # Session-level caches
 # ---------------------------------------------------------------------------

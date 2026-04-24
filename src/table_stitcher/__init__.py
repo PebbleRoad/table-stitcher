@@ -26,7 +26,7 @@ import time
 import logging
 from typing import Any, Optional
 
-from .models import MultiPageConfig, LogicalTable, TableMeta
+from .models import MultiPageConfig, LogicalTable, TableMeta, MergeTrace
 from .merger import merge_multipage_tables
 from .adapters.base import TableStitcherAdapter
 
@@ -39,6 +39,7 @@ __all__ = [
     "MultiPageConfig",
     "LogicalTable",
     "TableMeta",
+    "MergeTrace",
     "StitchingError",
     "TableStitcherAdapter",
     "__version__",
@@ -110,6 +111,13 @@ class TableStitcher:
 
         if cfg.max_width_difference < 0:
             errors.append(f"max_width_difference must be >= 0, got {cfg.max_width_difference}")
+
+        valid_width_policies = {"preserve_extra", "warn_drop", "fail", "merge_tail"}
+        if cfg.width_overflow_policy not in valid_width_policies:
+            errors.append(
+                "width_overflow_policy must be one of "
+                f"{sorted(valid_width_policies)}, got {cfg.width_overflow_policy!r}"
+            )
 
         for name, value in [
             ("header_sim_strict", cfg.header_sim_strict),
@@ -204,7 +212,11 @@ class TableStitcher:
             return doc
 
         for lt in multi_page_tables:
-            self._log_section(f"Found: Table spanning pages {lt.pages} ({len(lt.members)} fragments)")
+            reason = f", reason={lt.merge_reason}" if lt.merge_reason else ""
+            self._log_section(
+                f"Found: Table spanning pages {lt.pages} "
+                f"({len(lt.members)} fragments{reason})"
+            )
 
         self._log_phase_complete(2, len(multi_page_tables), time.time() - phase_start, "multi-page tables identified")
 

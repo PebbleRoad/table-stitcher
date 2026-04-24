@@ -15,7 +15,7 @@ logical_tables:
   - 4
   shape:
   - 152
-  - 6
+  - 7
   columns:
   - Species
   - Strain number
@@ -23,6 +23,7 @@ logical_tables:
   - Column_3
   - tef1-a
   - Column_5
+  - _extra_0_tub2
   first_row:
   - Angustimassarina populi
   - MFLUCC 13-0034
@@ -30,10 +31,12 @@ logical_tables:
   - ''
   - KR075164
   - ''
+  - ''
   last_row:
   - Xenomonodictys iranica
   - CBS 147181
   - MW175406
   - ''
+  - N/A
   - N/A
   - N/A

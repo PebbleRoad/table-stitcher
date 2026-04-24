@@ -21,17 +21,48 @@ class MyAdapter:
 
     def inject(self, doc, logical_tables: list[LogicalTable]):
         """Write merged tables back into the native document, pruning the
-        now-redundant satellite fragments. Return the modified document."""
+        now-redundant satellite fragments from the body tree and clearing
+        their cell content. Return the modified document."""
 ```
 
 A skeleton custom adapter appears in the top-level README. The merger
 never imports parser-specific types — it only reads from the `TableMeta`
 fields and writes to a pandas DataFrame, which the adapter then converts
 back into the parser's native table representation during `inject`.
+Each `LogicalTable` also carries `merge_reason`, `merge_traces`, and
+`warnings`; adapters can ignore them, log them, or surface them in their
+native document metadata.
 
 ---
 
 ## Docling adapter (`docling.py`)
+
+### How the docling adapter prunes satellites
+
+When `inject()` folds multiple fragments into one logical table, the
+satellite fragments (members after the anchor) are handled in two places:
+
+1. **Body tree** — references to satellite tables in `doc.body` (and any
+   groups) are removed, so rendered output contains only the merged
+   anchor.
+2. **`doc.tables` list** — the `Table` objects at the satellite indices
+   are *cleared in place*: `data` becomes an empty `TableData`
+   (`num_rows=0, num_cols=0`), `prov` becomes `[]`. The `Table`
+   wrapper stays at its list position because docling uses
+   position-based `self_ref` strings (`#/tables/N`) — removing entries
+   would invalidate every reference that points to a later index.
+
+**If your downstream code iterates `doc.tables` directly** (instead of
+traversing the body tree), skip empty-shell tables explicitly:
+
+```python
+for t in doc.tables:
+    if t.data and t.data.num_rows > 0:
+        ...  # real content
+```
+
+For most users the body tree is the right thing to iterate — it already
+reflects the merged view.
 
 ### Version compatibility
 

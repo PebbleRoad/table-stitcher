@@ -8,6 +8,7 @@ import pytest
 from table_stitcher.models import MultiPageConfig, TableMeta, LogicalTable
 from table_stitcher.merger import (
     UnionFind,
+    align_dataframe_to_header,
     merge_multipage_tables,
     jaccard,
     tokenize,
@@ -168,6 +169,87 @@ class TestRequireSameWidth:
         cfg_strict = MultiPageConfig(require_same_width=True)
         results_strict = merge_multipage_tables(metas, cfg_strict)
         assert len(results_strict) == 2
+
+
+class TestWidthOverflowPolicy:
+    def test_default_preserves_extra_columns(self):
+        """Wider continuation fragments should preserve data by default."""
+        df3 = pd.DataFrame({"A": ["a1"], "B": ["b1"], "C": ["c1"]})
+        df4 = pd.DataFrame({"A": ["a2"], "B": ["b2"], "C": ["c2"], "D": ["d2"]})
+        metas = [
+            _make_meta(idx=0, df=df3, start_page=1),
+            _make_meta(idx=1, df=df4, start_page=2),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.shape == (2, 4)
+        assert results[0].df.iloc[1, 3] == "d2"
+        assert str(results[0].df.columns[3]).startswith("_extra_0_")
+
+    def test_warn_drop_policy_records_warning(self):
+        df = pd.DataFrame({"A": ["a"], "B": ["b"], "Extra": ["x"]})
+        meta = _make_meta(idx=7, df=df, start_page=3)
+        out = align_dataframe_to_header(
+            df,
+            ["A", "B"],
+            meta,
+            MultiPageConfig(width_overflow_policy="warn_drop"),
+        )
+        assert list(out.columns) == ["A", "B"]
+        assert out.iloc[0].tolist() == ["a", "b"]
+        assert out.attrs["table_stitcher_warnings"]
+
+    def test_fail_policy_raises_on_extra_columns(self):
+        df = pd.DataFrame({"A": ["a"], "B": ["b"], "Extra": ["x"]})
+        meta = _make_meta(idx=7, df=df, start_page=3)
+        with pytest.raises(ValueError, match="wider than canonical"):
+            align_dataframe_to_header(
+                df,
+                ["A", "B"],
+                meta,
+                MultiPageConfig(width_overflow_policy="fail"),
+            )
+
+    def test_merge_tail_policy_keeps_extra_values_in_last_column(self):
+        df = pd.DataFrame({"A": ["a"], "B": ["b"], "Extra": ["x"]})
+        meta = _make_meta(idx=7, df=df, start_page=3)
+        out = align_dataframe_to_header(
+            df,
+            ["A", "B"],
+            meta,
+            MultiPageConfig(width_overflow_policy="merge_tail"),
+        )
+        assert list(out.columns) == ["A", "B"]
+        assert out.iloc[0].tolist() == ["a", "b\nx"]
+
+    def test_invalid_policy_raises_for_direct_core_calls(self):
+        df = pd.DataFrame({"A": ["a"], "B": ["b"]})
+        meta = _make_meta(idx=7, df=df, start_page=3)
+        cfg = MultiPageConfig()
+        cfg.width_overflow_policy = "mystery"
+        with pytest.raises(ValueError, match="width_overflow_policy"):
+            align_dataframe_to_header(df, ["A"], meta, cfg)
+
+
+class TestMergeTrace:
+    def test_logical_table_explains_merge_reason_and_signals(self):
+        df = pd.DataFrame({"Name": ["Alice"], "Age": ["30"]})
+        metas = [
+            _make_meta(idx=0, df=df, start_page=1),
+            _make_meta(idx=1, df=df, start_page=2, is_headerless=True),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        lt = results[0]
+        assert lt.merge_reason == "headerless_width_match"
+        assert len(lt.merge_traces) == 1
+        trace = lt.merge_traces[0]
+        assert trace.left_idx == 0
+        assert trace.right_idx == 1
+        assert trace.merged is True
+        assert trace.reason == "headerless_width_match"
+        assert trace.signals["page_gap"] == 1
+        assert trace.signals["width_diff"] == 0
 
 
 class TestHeaderSimLoose:
@@ -354,6 +436,26 @@ class TestMergeDecisionSignals:
         results = merge_multipage_tables(metas, MultiPageConfig())
         assert len(results) == 1
 
+    def test_spillover_only_on_immediate_next_page(self):
+        """
+        A 1-col headerless fragment several pages later is NOT a spillover,
+        even when max_page_gap is large enough to permit a general merge.
+        Cell overflow physically lands on the very next page — anything
+        further is an unrelated small table.
+        """
+        df_main = pd.DataFrame({"Name": ["Alice"], "Ref": ["link"], "Notes": ["n1"]})
+        df_spill = pd.DataFrame({"Column_0": ["https://continued.url"]})
+        metas = [
+            _make_meta(idx=0, df=df_main, start_page=1),
+            # Page 3, two pages later — still within max_page_gap=3, but
+            # spillover must not fire.
+            _make_meta(idx=1, df=df_spill, start_page=3, is_headerless=True),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig(max_page_gap=3))
+        assert len(results) == 2, (
+            "Spillover fired across a 2-page gap; it must require page_gap == 1"
+        )
+
     def test_page_gap_too_large_no_merge(self):
         """Tables more than max_page_gap apart → no merge."""
         df = pd.DataFrame({"A": [1], "B": [2]})
@@ -485,3 +587,25 @@ class TestStitchSplitCells:
         out = stitch_split_cells(df)
         assert out.shape == (1, 3)
         assert out.iloc[0, 2] == "continuation"
+
+    def test_duplicate_column_names_do_not_break_folding(self):
+        """
+        When a merged DataFrame has duplicate column labels (common with
+        rowspan/colspan parsers like the insurance-payout fixture), label-
+        based indexing returns a sub-Series for each column — which would
+        misclassify a single-cell continuation row as multi-cell and skip
+        the fold. Positional indexing avoids this.
+        """
+        # Two columns both named "Amount", third "Notes" — same schema as
+        # the rowspan-insurance fixture produces after merge.
+        df = pd.DataFrame(
+            [
+                ["A-1", "$100", "$200", "first"],
+                ["",    "",     "",     "second line"],   # single continuation
+            ],
+            columns=["ID", "Amount", "Amount", "Notes"],
+        )
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 4)
+        # Continuation folded into the 4th column (Notes, by positional match).
+        assert out.iloc[0, 3] == "first\nsecond line"

@@ -1,0 +1,26 @@
+description: Parser-neutral core fixture for a headerless continuation with one extra trailing column.
+config:
+  max_page_gap: 1
+  width_overflow_policy: preserve_extra
+tables:
+  - idx: 0
+    page: 1
+    vert_bottom: 0.9
+    columns: [ID, Name, Notes]
+    rows:
+      - [A-1, Alpha, starts on page one]
+  - idx: 1
+    page: 2
+    vert_top: 0.1
+    columns: [Column_0, Column_1, Column_2, Column_3]
+    rows:
+      - [A-2, Beta, continues on page two, preserved extra value]
+    is_headerless: true
+expected:
+  logical_tables:
+    - members: [0, 1]
+      pages: [1, 2]
+      shape: [2, 4]
+      merge_reason: headerless_width_drift_layout
+      columns: [ID, Name, Notes, _extra_0_Column_3]
+      last_row: [A-2, Beta, continues on page two, preserved extra value]

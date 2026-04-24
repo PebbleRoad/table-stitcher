@@ -1,0 +1,23 @@
+description: Two-page corporate history table from a Japanese EDINET filing. Both pages carry identical
+  2-column Japanese headers (年⽉ / 概要). Exercises the repeated-header Jaccard path against pure CJK text
+  — merges because tokenize() emits one token per CJK character, giving Jaccard 1.0 on identical headers.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 52
+  - 2
+  columns:
+  - 年⽉
+  - 概要
+  first_row:
+  - 1933年９⽉
+  - ㈱豊⽥⾃動織機製作所（現在の㈱豊⽥⾃動織機）内で⾃動⾞の研究を開始
+  last_row:
+  - 2023年５⽉
+  - ダイムラートラック社、三菱ふそうトラック・バス㈱および⽇野⾃動⾞㈱とCASE技術開発・商 ⽤⾞事業の強化に向けて協業すると共に、三菱ふそうトラック・バス㈱と⽇野⾃動⾞㈱の統合 に関する基本合意書を締結（2025年６⽉に最終契約を締結）

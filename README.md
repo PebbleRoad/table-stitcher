@@ -14,6 +14,8 @@ PDF extraction tools often fragment a single logical table into multiple pieces 
 - **Header orphans** -- headers at the bottom of one page, data on the next
 - **Spillover content** -- URLs or long text cut at page margins, appearing as separate 1-column "tables"
 - **Split cells** -- cell content fragmented across page breaks
+- **Width drift** -- same table extracted with slightly different column counts across pages
+- **Multilingual headers** -- merge rules work on Latin, CJK, Thai, Arabic, Cyrillic, and more — no language model or dictionary required, purely structural signals
 
 ## How It Fits in Your Pipeline
 
@@ -160,6 +162,7 @@ The Docling adapter illustrates this: `_dataframe_to_docling_data()` reuses the 
 | `max_page_gap` | int | 1 | Maximum pages between fragments |
 | `require_same_width` | bool | False | Require identical column counts |
 | `max_width_difference` | int | 4 | Column count tolerance |
+| `headerless_width_tolerance` | int | 2 | Width-drift tolerance for headerless pairs when layout confirms continuation |
 | `header_sim_strict` | float | 0.6 | Header similarity threshold |
 | `header_sim_loose` | float | 0.3 | Lower threshold (with layout confirmation) |
 | `row_sim_threshold` | float | 0.3 | First-row similarity fallback |
@@ -172,6 +175,10 @@ The Docling adapter illustrates this: `_dataframe_to_docling_data()` reuses the 
 | `max_data_orphan_rows` | int | 5 | Max rows for data orphan classification |
 
 ## Writing a Custom Adapter
+
+For the adapter protocol in detail and notes on the Docling adapter's
+version compatibility and known workarounds, see
+[`src/table_stitcher/adapters/README.md`](src/table_stitcher/adapters/README.md).
 
 To integrate a new parser, implement two methods. Here's a working skeleton:
 
@@ -298,6 +305,16 @@ except StitchingError as e:
 import logging
 logging.getLogger("table_stitcher").setLevel(logging.INFO)
 ```
+
+## Testing and Contributing
+
+- [`tests/README.md`](tests/README.md) — test layout, running instructions, timings, and what the integration harness actually asserts
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, fixture workflow, naming convention, how to regenerate an `expected.yaml` after a merger change
+- [`src/table_stitcher/adapters/README.md`](src/table_stitcher/adapters/README.md) — adapter protocol, the Docling adapter's version compatibility and known workarounds, how to write a new adapter
+
+The library ships with a taxonomy-based integration suite: every merge rule
+has at least one fixture exercising it, and every category that surfaced
+a real bug has a fixture pinning the fix.
 
 ## License
 

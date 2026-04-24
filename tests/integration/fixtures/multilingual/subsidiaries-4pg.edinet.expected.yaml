@@ -1,0 +1,38 @@
+description: Four-page subsidiaries list from a Japanese EDINET filing. Three fragments (widths 6/6/7),
+  all with identical 6-column Japanese headers (名称 / 住所 / 資本⾦⼜は出資⾦ / 主要な事業の内容 / 議決権の所有割合 / 関係内容). The
+  width-7 final fragment is the summary-rows continuation of the same table. All three merge on CJK-aware
+  header Jaccard.
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  - 2
+  pages:
+  - 1
+  - 2
+  - 3
+  shape:
+  - 48
+  - 6
+  columns:
+  - 名称
+  - 住所
+  - 資本⾦⼜は 出資⾦
+  - 主要な 事業 の内容
+  - 議決権の 所有 割合(％)
+  - 関係内容
+  first_row:
+  - （連結⼦会社） ⽇野⾃動⾞㈱ ＊１＊２
+  - 東京都 ⽇野市
+  - 百万円 72, 717
+  - ⾃動⾞
+  - 50. 18
+  - ⾃動⾞および同部品の購⼊・販売先。なお、 当社より資⾦援助を受けています。 設備等の賃貸借…有
+  last_row:
+  - その他 153社
+  - ＊２
+  - ''
+  - ''
+  - ''
+  - ''

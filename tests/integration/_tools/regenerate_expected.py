@@ -115,7 +115,11 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     out = regenerate(args.pdf, args.description, args.xfail, args.clear_xfail)
-    print(f"wrote {out.relative_to(Path.cwd())}")
+    try:
+        display = out.relative_to(Path.cwd())
+    except ValueError:
+        display = out
+    print(f"wrote {display}")
     return 0
 
 

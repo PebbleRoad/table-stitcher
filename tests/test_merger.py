@@ -223,6 +223,51 @@ class TestUtilities:
     def test_tokenize(self):
         assert tokenize("Hello World 123") == {"hello", "world"}
 
+    def test_tokenize_cjk_character_unigrams(self):
+        # Each CJK character becomes its own token; digits and whitespace ignored.
+        assert tokenize("年月 概要 2024") == {"年", "月", "概", "要"}
+
+    def test_tokenize_japanese_header_exact_match(self):
+        # Identical Japanese headers must produce identical token sets so
+        # Jaccard similarity hits 1.0 on the repeated-header merge path.
+        a = tokenize("名称 住所 資本金")
+        b = tokenize("名称 住所 資本金")
+        assert a == b
+        assert jaccard(a, b) == 1.0
+
+    def test_tokenize_hangul_and_hiragana_also_tokenized(self):
+        # Korean syllables
+        assert "한" in tokenize("한국어")
+        # Japanese hiragana
+        assert "あ" in tokenize("あいうえお")
+
+    def test_tokenize_kangxi_radical_form(self):
+        # Docling occasionally emits the Kangxi-radical variant ⽉ (U+2F49)
+        # instead of the normal CJK Unified Ideograph 月 (U+6708).
+        # Both forms must tokenize so that page-to-page matching works even
+        # when the parser picks different variants.
+        assert tokenize("年⽉") == {"年", "⽉"}
+
+    def test_tokenize_mixed_latin_and_cjk(self):
+        # Mixed headers (common in Japanese business docs: "Sales 売上") —
+        # both scripts contribute tokens.
+        assert tokenize("Sales 売上") == {"sales", "売", "上"}
+
+    def test_tokenize_thai_each_character_separately(self):
+        # Thai is also a separator-less script — per-character tokens.
+        # This proves the rule is "script has no word separators", not
+        # "script happens to be CJK".
+        out = tokenize("ภาษาไทย")
+        # Every character becomes its own token
+        assert out == {"ภ", "า", "ษ", "ไ", "ท", "ย"}
+
+    def test_tokenize_arabic_word_level(self):
+        # Arabic DOES use whitespace between words — should tokenize as words,
+        # not per-character, exactly like Latin. The rule generalises.
+        out = tokenize("اللغة العربية")
+        # Two whitespace-separated words (lowercasing is a no-op for Arabic).
+        assert out == {"اللغة", "العربية"}
+
     def test_is_numeric_like_colnames(self):
         assert is_numeric_like_colnames(["0", "1", "2"]) is True
         assert is_numeric_like_colnames(["Name", "Age"]) is False

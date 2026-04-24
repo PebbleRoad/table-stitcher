@@ -12,6 +12,7 @@ Key Principles:
 """
 
 import re
+import unicodedata
 import logging
 from collections import defaultdict
 from typing import Any, List, Set, Tuple, Optional, Dict
@@ -32,11 +33,96 @@ def normalize_col_name(col: Any) -> str:
     return str(col).strip().lower()
 
 
+# Scripts where each character is semantically its own token, because the
+# script doesn't use whitespace between words (CJK family, Thai, Lao, Khmer,
+# Myanmar, Tibetan). Per-character Jaccard works for similarity comparison:
+# identical headers produce identical character sets; unrelated headers
+# rarely cross the ~60% overlap required to hit the strict threshold.
+#
+# This list is bounded — Unicode regularly adds new scripts, but almost all
+# new scripts are whitespace-using (and therefore handled as words without
+# a code change). Only the separator-less family needs enumeration.
+_SEPARATORLESS_SCRIPTS: Set[str] = {
+    "Han",       # Chinese / Japanese kanji / Korean hanja
+    "Hiragana",
+    "Katakana",
+    "Hangul",
+    "Thai",
+    "Lao",
+    "Khmer",
+    "Myanmar",
+    "Tibetan",
+}
+
+# Map a substring of the Unicode character name to a script tag. Unicode
+# character names are standardized and frozen, so this mapping is stable
+# across Python and Unicode releases.
+_NAME_TO_SCRIPT: List[Tuple[str, str]] = [
+    ("CJK", "Han"),
+    ("KANGXI", "Han"),          # e.g. U+2F49 "KANGXI RADICAL MOON"
+    ("HIRAGANA", "Hiragana"),
+    ("KATAKANA", "Katakana"),
+    ("HANGUL", "Hangul"),
+    ("THAI", "Thai"),
+    ("LAO", "Lao"),
+    ("KHMER", "Khmer"),
+    ("MYANMAR", "Myanmar"),
+    ("TIBETAN", "Tibetan"),
+]
+
+
+def _script_of(ch: str) -> Optional[str]:
+    """Return a script tag for `ch`, or None for scripts that use whitespace."""
+    if ord(ch) < 128:   # ASCII fast path — by far the common case in Latin text
+        return None
+    name = unicodedata.name(ch, "")
+    if not name:
+        return None
+    for prefix, script in _NAME_TO_SCRIPT:
+        if prefix in name:
+            return script
+    return None
+
+
 def tokenize(text: str) -> Set[str]:
-    """Extract lowercase alphabetic tokens from text."""
-    text = str(text).lower()
-    tokens = re.findall(r"[a-zA-Z]+", text)
-    return set(tokens)
+    """
+    Extract tokens for Jaccard similarity comparison — script-aware.
+
+    Rules, all structural (no language models, no external dependencies):
+
+    - Characters in separator-less scripts (CJK, Thai, Lao, Khmer, Myanmar,
+      Tibetan): each character is its own token. Unigram Jaccard — identical
+      headers produce identical token sets.
+    - Other alphabetic characters (Latin, Cyrillic, Greek, Arabic, Hebrew,
+      Devanagari, Tamil, ...): grouped into whitespace-separated words,
+      lowercased. These scripts have word boundaries at whitespace, so the
+      same rule that works for English works for them.
+    - Digits, punctuation, and whitespace: ignored — boundaries only.
+
+    Mixed-script text (e.g., "Sales + non-Latin run") produces the union of
+    both token sets.
+    """
+    tokens: Set[str] = set()
+    buf: List[str] = []
+    for ch in str(text):
+        # Check script BEFORE isalpha: Kangxi radicals (U+2F00–U+2FDF) and
+        # some CJK compatibility characters are classed as symbols, not
+        # letters, but still belong to Han script for tokenization purposes.
+        if _script_of(ch) in _SEPARATORLESS_SCRIPTS:
+            if buf:
+                tokens.add("".join(buf).lower())
+                buf.clear()
+            tokens.add(ch)
+        elif ch.isalpha():
+            buf.append(ch)
+        else:
+            # Non-letter boundary (digit, punctuation, whitespace) — flush.
+            if buf:
+                tokens.add("".join(buf).lower())
+                buf.clear()
+    if buf:
+        tokens.add("".join(buf).lower())
+    return tokens
 
 
 def jaccard(a: Set[str], b: Set[str]) -> float:

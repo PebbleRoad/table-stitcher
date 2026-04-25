@@ -59,8 +59,23 @@ from table_stitcher import stitch_tables
 
 converter = DocumentConverter()
 doc = converter.convert("report.pdf").document
+doc = stitch_tables(doc)                  # merged tables; ready for
+                                          # export_to_markdown() / HTML / LLM
+```
+
+`stitch_tables()` mutates `doc` in place and returns the same object. If you
+need the pre-stitch original (e.g. for diffing), snapshot first:
+
+```python
+original = doc.model_copy(deep=True)
 doc = stitch_tables(doc)
 ```
+
+Tables that aren't merged pass through byte-for-byte — multi-row headers,
+rowspan/colspan, cell bboxes, and prov entries are preserved exactly as
+Docling produced them. Only merged tables get their data rows rebuilt from
+the merged DataFrame; anchor headers are reused verbatim. See
+[Adapter Design Principle: Respect the Incoming Structure](#adapter-design-principle-respect-the-incoming-structure).
 
 ### With Configuration
 

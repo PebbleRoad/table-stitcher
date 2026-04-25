@@ -1,23 +1,47 @@
-description: |
-  Synthetic fixture (see _synth/generate.py::build_spillover). Page 1 is a
+description: 'Synthetic fixture (see _synth/generate.py::build_spillover). Page 1 is a
+
   21-row × 3-col task table. Page 2 carries three continuation lines of the
+
   final Notes cell — docling extracts that as a 1-column headerless
+
   fragment, which is the canonical shape is_spillover_fragment() looks for
+
   (tA.width > 1, tB.width == 1, tB.is_headerless).
 
-  Expected merge: the page-2 fragment's three lines are stitched into the
+
+  Expected merge: the page-2 fragment''s three lines are stitched into the
+
   Notes cell of the last row, producing a single 3-col logical table with
+
   the overflow text joined by stitch_separator.
 
+  '
 config: {}
-
 logical_tables:
-  - members: [0, 1]
-    pages: [1, 2]
-    shape: [21, 3]
-    columns: [ID, Description, Notes]
-    first_row: ["N-001", "Item 1", "Short note for item 1."]
-    last_row:
-      - "N-021"
-      - "Item 21"
-      - "Short note for item 21.\nContinuation of the final note from page 1 - this sentence belongs to the row\nSecond overflow line with additional context the cell couldn't fit.\nThird overflow line closing out the note."
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 21
+  - 3
+  columns:
+  - ID
+  - Description
+  - Notes
+  first_row:
+  - N-001
+  - Item 1
+  - Short note for item 1.
+  last_row:
+  - N-021
+  - Item 21
+  - 'Short note for item 21.
+
+    Continuation of the final note from page 1 -this sentence belongs to the row above.
+
+    Second overflow line with additional context the cell couldn''t fit.
+
+    Third overflow line closing out the note.'

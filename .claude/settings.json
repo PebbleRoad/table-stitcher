@@ -56,7 +56,8 @@
       "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest -m integration tests/)",
       "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest -m integration tests/integration/test_fixtures.py::test_fixture_stitches_as_expected -k \"substance-list or note-overflow\")",
       "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/test_docling_adapter.py::TestInjection::test_injection_failure_restores_partial_mutations -v)",
-      "Bash(scripts/release_gate.sh)"
+      "Bash(scripts/release_gate.sh)",
+      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest -m integration tests/integration/test_fixtures.py -k \"substance-list or note-overflow\")"
     ]
   }
 }

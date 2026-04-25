@@ -15,6 +15,7 @@ import re
 import unicodedata
 import logging
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Any, List, Set, Tuple, Optional, Dict
 
 import pandas as pd
@@ -405,100 +406,145 @@ def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
     return pd.DataFrame(stitched_rows, columns=cols)
 
 
-def align_dataframe_to_header(df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig) -> pd.DataFrame:
+_VALID_WIDTH_OVERFLOW_POLICIES = {"preserve_extra", "warn_drop", "fail", "merge_tail"}
+
+
+def _pad_narrow(df: pd.DataFrame, canonical_cols: List[str]) -> pd.DataFrame:
+    """Right-pad a narrower fragment with empty ``_pad_N`` columns."""
+    df_copy = df.copy()
+    for k in range(df.shape[1], len(canonical_cols)):
+        df_copy[f"_pad_{k}"] = ""
+    df_copy.columns = canonical_cols
+    df_copy.attrs["table_stitcher_warnings"] = []
+    return df_copy
+
+
+def _overflow_fail(
+    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+) -> pd.DataFrame:
+    dropped_cols = [str(c) for c in df.columns[len(canonical_cols):]]
+    raise ValueError(
+        f"Fragment idx={getattr(source_meta, 'idx', None)} "
+        f"page={getattr(source_meta, 'start_page', None)} has {df.shape[1]} columns, "
+        f"wider than canonical width {len(canonical_cols)}; extra columns: {dropped_cols}"
+    )
+
+
+def _overflow_warn_drop(
+    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+) -> pd.DataFrame:
+    dropped = df.shape[1] - len(canonical_cols)
+    dropped_cols = [str(c) for c in df.columns[len(canonical_cols):]]
+    warning = (
+        f"Dropped {dropped} trailing column(s) from fragment "
+        f"idx={getattr(source_meta, 'idx', None)} "
+        f"page={getattr(source_meta, 'start_page', None)} "
+        f"to fit canonical width {len(canonical_cols)}; dropped columns: {dropped_cols}"
+    )
+    log.warning("align_dataframe_to_header: %s", warning)
+
+    df_copy = df.iloc[:, :len(canonical_cols)].copy()
+    df_copy.columns = canonical_cols
+    df_copy.attrs["table_stitcher_warnings"] = [warning]
+    return df_copy
+
+
+def _overflow_merge_tail(
+    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+) -> pd.DataFrame:
+    """Fold trailing overflow cells into the last canonical column."""
+    rows = []
+    for _, row in df.iterrows():
+        vals = list(row.tolist())
+        head_vals = vals[:len(canonical_cols)]
+        tail_vals = [
+            str(v).strip()
+            for v in vals[len(canonical_cols):]
+            if not is_empty_value(v)
+        ]
+        while len(head_vals) < len(canonical_cols):
+            head_vals.append("")
+        if tail_vals and canonical_cols:
+            last_idx = len(canonical_cols) - 1
+            tail_text = cfg.stitch_separator.join(tail_vals)
+            if is_empty_value(head_vals[last_idx]):
+                head_vals[last_idx] = tail_text
+            else:
+                head_vals[last_idx] = (
+                    str(head_vals[last_idx]).rstrip()
+                    + cfg.stitch_separator
+                    + tail_text
+                )
+        rows.append(head_vals)
+    df_copy = pd.DataFrame(rows, columns=canonical_cols)
+    df_copy.attrs["table_stitcher_warnings"] = []
+    return df_copy
+
+
+def _overflow_preserve_extra(
+    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+) -> pd.DataFrame:
+    """Keep overflow cells in explicit ``_extra_N_<origname>`` columns (default, lossless)."""
+    df_copy = df.copy()
+    extra_cols: List[str] = []
+    used = {str(c) for c in canonical_cols}
+    for offset, col in enumerate(df.columns[len(canonical_cols):]):
+        base = f"_extra_{offset}_{str(col).strip() or 'column'}"
+        candidate = base
+        suffix = 1
+        while candidate in used:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        used.add(candidate)
+        extra_cols.append(candidate)
+    df_copy.columns = canonical_cols + extra_cols
+    df_copy.attrs["table_stitcher_warnings"] = []
+    return df_copy
+
+
+_WIDTH_OVERFLOW_HANDLERS = {
+    "preserve_extra": _overflow_preserve_extra,
+    "warn_drop": _overflow_warn_drop,
+    "fail": _overflow_fail,
+    "merge_tail": _overflow_merge_tail,
+}
+
+
+def align_dataframe_to_header(
+    df: pd.DataFrame,
+    canonical_cols: List[str],
+    source_meta: TableMeta,
+    cfg: MultiPageConfig,
+) -> pd.DataFrame:
     """
     Align a DataFrame to a canonical column structure.
 
     Narrower fragments are right-padded with empty columns.
-    Wider fragments follow ``cfg.width_overflow_policy``:
+    Wider fragments dispatch to a handler keyed by ``cfg.width_overflow_policy``:
 
-    - ``preserve_extra``: add trailing ``_extra_N`` columns.
+    - ``preserve_extra`` (default): add trailing ``_extra_N_<origname>`` columns.
     - ``warn_drop``: drop trailing columns and log a warning.
     - ``fail``: raise ``ValueError``.
     - ``merge_tail``: append trailing values into the final canonical cell.
     """
-    valid_policies = {"preserve_extra", "warn_drop", "fail", "merge_tail"}
-    if cfg.width_overflow_policy not in valid_policies:
+    if cfg.width_overflow_policy not in _VALID_WIDTH_OVERFLOW_POLICIES:
         raise ValueError(
             "width_overflow_policy must be one of "
-            f"{sorted(valid_policies)}, got {cfg.width_overflow_policy!r}"
+            f"{sorted(_VALID_WIDTH_OVERFLOW_POLICIES)}, got {cfg.width_overflow_policy!r}"
         )
 
-    df_copy = df.copy()
-    warnings: List[str] = []
     if df.shape[1] < len(canonical_cols):
-        for k in range(df.shape[1], len(canonical_cols)):
-            df_copy[f"_pad_{k}"] = ""
-    elif df.shape[1] > len(canonical_cols):
-        dropped = df.shape[1] - len(canonical_cols)
-        dropped_cols = [str(c) for c in df.columns[len(canonical_cols):]]
-        source_idx = getattr(source_meta, "idx", None)
-        source_page = getattr(source_meta, "start_page", None)
+        return _pad_narrow(df, canonical_cols)
 
-        if cfg.width_overflow_policy == "fail":
-            raise ValueError(
-                "Fragment idx=%s page=%s has %d columns, wider than "
-                "canonical width %d; extra columns: %s"
-                % (source_idx, source_page, df.shape[1], len(canonical_cols), dropped_cols)
-            )
+    if df.shape[1] > len(canonical_cols):
+        return _WIDTH_OVERFLOW_HANDLERS[cfg.width_overflow_policy](
+            df, canonical_cols, source_meta, cfg
+        )
 
-        if cfg.width_overflow_policy == "warn_drop":
-            warning = (
-                "Dropped %d trailing column(s) from fragment idx=%s page=%s "
-                "to fit canonical width %d; dropped columns: %s"
-                % (dropped, source_idx, source_page, len(canonical_cols), dropped_cols)
-            )
-            log.warning("align_dataframe_to_header: %s", warning)
-            warnings.append(warning)
-            df_copy = df_copy.iloc[:, :len(canonical_cols)]
-            df_copy.columns = canonical_cols
-            df_copy.attrs["table_stitcher_warnings"] = warnings
-            return df_copy
-
-        if cfg.width_overflow_policy == "merge_tail":
-            rows = []
-            for _, row in df.iterrows():
-                vals = list(row.tolist())
-                head_vals = vals[:len(canonical_cols)]
-                tail_vals = [
-                    str(v).strip() for v in vals[len(canonical_cols):]
-                    if not is_empty_value(v)
-                ]
-                while len(head_vals) < len(canonical_cols):
-                    head_vals.append("")
-                if tail_vals and canonical_cols:
-                    last_idx = len(canonical_cols) - 1
-                    tail_text = cfg.stitch_separator.join(tail_vals)
-                    if is_empty_value(head_vals[last_idx]):
-                        head_vals[last_idx] = tail_text
-                    else:
-                        head_vals[last_idx] = (
-                            str(head_vals[last_idx]).rstrip()
-                            + cfg.stitch_separator
-                            + tail_text
-                        )
-                rows.append(head_vals)
-            df_copy = pd.DataFrame(rows, columns=canonical_cols)
-            return df_copy
-
-        # Default and safest behavior: keep every trailing value in explicit
-        # overflow columns instead of silently losing data.
-        extra_cols = []
-        used = {str(c) for c in canonical_cols}
-        for offset, col in enumerate(df.columns[len(canonical_cols):]):
-            base = f"_extra_{offset}_{str(col).strip() or 'column'}"
-            candidate = base
-            suffix = 1
-            while candidate in used:
-                candidate = f"{base}_{suffix}"
-                suffix += 1
-            used.add(candidate)
-            extra_cols.append(candidate)
-        df_copy.columns = canonical_cols + extra_cols
-        return df_copy
-
+    # Exact width match — just relabel and carry an empty warnings list.
+    df_copy = df.copy()
     df_copy.columns = canonical_cols
-    df_copy.attrs["table_stitcher_warnings"] = warnings
+    df_copy.attrs["table_stitcher_warnings"] = []
     return df_copy
 
 
@@ -584,165 +630,147 @@ def _build_generic_merged_table(
 
 # -------------------------------------------------------------------
 # 5. MAIN MERGE FUNCTION
+#
+# The main `merge_multipage_tables` function reads as four named phases:
+# setup → Pass 1 (sequential) → Pass 2 (orphan repair) → build results.
+# Each phase is a helper that takes `_MergeState` plus cfg; state holds
+# the cross-phase data (union-find, index maps, traces).
 # -------------------------------------------------------------------
 
-def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -> List[LogicalTable]:
+@dataclass
+class _MergeState:
+    """Mutable state passed between the phases of merge_multipage_tables."""
+    uf: UnionFind
+    tables_meta: List[TableMeta]
+    meta_by_idx: Dict[int, TableMeta]
+    orig_to_pos: Dict[int, int]
+    sorted_tables: List[TableMeta]
+    extracted_indices: Set[int]
+    spillover_targets: Dict[int, int] = field(default_factory=dict)
+    decision_traces: List[MergeTrace] = field(default_factory=list)
+
+
+def _init_merge_state(tables_meta: List[TableMeta]) -> _MergeState:
+    """Build the shared state for one merge invocation."""
+    # Original t.idx values may be non-contiguous when table extraction
+    # fails for some tables. Positional index maps bridge that gap.
+    orig_to_pos = {t.idx: pos for pos, t in enumerate(tables_meta)}
+    return _MergeState(
+        uf=UnionFind(len(tables_meta)),
+        tables_meta=tables_meta,
+        meta_by_idx={t.idx: t for t in tables_meta},
+        orig_to_pos=orig_to_pos,
+        sorted_tables=sorted(tables_meta, key=lambda t: (t.start_page or 0, t.idx)),
+        extracted_indices={t.idx for t in tables_meta},
+    )
+
+
+def _classify_sequential_pair(
+    tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig,
+) -> Tuple[bool, str, bool, List[str]]:
     """
-    Merge table fragments into logical tables.
+    Decide whether two adjacent-in-document-order fragments should merge.
 
-    This function implements three key principles:
-    1. Sequential merging: Headerless fragments only merge with immediate predecessor
-    2. Spillover detection: 1-column fragments are cell overflow, stitched into last cell
-    3. Width matching: Same column count = same table structure
-
-    Returns a list of LogicalTable objects representing merged tables.
+    Returns ``(should_merge, reason, is_spillover, warnings)``. The caller
+    handles the actual union and trace bookkeeping; this function is pure
+    logic over the pair's signals. Keeping it pure makes every merge
+    decision independently reviewable.
     """
-    n = len(tables_meta)
-    if n == 0:
-        return []
+    # --- Page-adjacency guard ---
+    if tA.start_page is None or tB.start_page is None:
+        return False, "missing_page", False, []
+    page_gap = tB.start_page - tA.start_page
+    if page_gap < 1 or page_gap > cfg.max_page_gap:
+        return False, "page_gap_out_of_range", False, []
 
-    # Build bidirectional mapping between original doc indices and
-    # positional indices (0..n-1).  Original t.idx values may be
-    # non-contiguous when table extraction fails for some tables.
-    orig_to_pos: Dict[int, int] = {}
-    pos_to_orig: Dict[int, int] = {}
-    for pos, t in enumerate(tables_meta):
-        orig_to_pos[t.idx] = pos
-        pos_to_orig[pos] = t.idx
+    # --- Spillover (checked before width guards since spillover can cross
+    # width boundaries legitimately: 1-col fragment follows N-col table) ---
+    if is_spillover_fragment(tA, tB, cfg):
+        return True, "spillover", True, []
 
-    uf = UnionFind(n)
-    meta_by_idx = {t.idx: t for t in tables_meta}
+    # --- Right-side header orphan starts a new table, not a continuation ---
+    if tB.is_header_orphan:
+        return False, "right_header_orphan_starts_next_table", False, []
 
-    # Track spillover fragments for special handling during build
-    spillover_targets: Dict[int, int] = {}  # spillover_idx -> target_table_idx
-    decision_traces: List[MergeTrace] = []
+    # --- Width guards ---
+    width_diff = abs(tA.width - tB.width)
+    if cfg.require_same_width and width_diff > 0:
+        return False, "require_same_width", False, []
+    if width_diff > cfg.max_width_difference:
+        return False, "width_difference_too_large", False, []
 
-    # Sort tables by document order (page, then index)
-    sorted_tables = sorted(tables_meta, key=lambda t: (t.start_page or 0, t.idx))
+    # --- Header orphan on the left + headerless data on the right:
+    # trust the data fragment's width (header orphans often have
+    # truncated widths from empty cells dropped by the parser). ---
+    if tA.is_header_orphan and tB.is_headerless:
+        return True, "header_orphan_to_headerless", False, []
 
-    # Build set of extracted indices for continuity checks.
-    # If a table between tA and tB was skipped during extraction,
-    # we cannot safely assume tB continues tA.
-    extracted_indices = {t.idx for t in tables_meta}
+    # --- Headerless continuation ---
+    if tB.is_headerless:
+        if tA.width == tB.width:
+            return True, "headerless_width_match", False, []
+        if (width_diff <= cfg.headerless_width_tolerance
+                and layout_suggests_continuation(tA, tB, cfg)):
+            return True, "headerless_width_drift_layout", False, []
+        if jaccard(tA.first_row_tokens, tB.first_row_tokens) >= cfg.row_sim_threshold:
+            return True, "row_similarity", False, []
+        return False, "headerless_no_signal", False, []
 
-    # --- PASS 1: Sequential merging ---
+    # --- Repeated-header continuation ---
+    header_sim = jaccard(tA.header_tokens, tB.header_tokens)
+    if header_sim >= cfg.header_sim_strict:
+        return True, "header_similarity_strict", False, []
+    if header_sim >= cfg.header_sim_loose and layout_suggests_continuation(tA, tB, cfg):
+        return True, "header_similarity_loose_layout", False, []
+    return False, "header_similarity_too_low", False, []
+
+
+def _pass1_sequential_merge(state: _MergeState, cfg: MultiPageConfig) -> None:
+    """
+    Walk document-order-adjacent pairs and union them by the rules in
+    ``_classify_sequential_pair``. Records a MergeTrace for every pair
+    (merged or not) so downstream consumers can audit the decision stream.
+    """
+    sorted_tables = state.sorted_tables
     for i in range(1, len(sorted_tables)):
-        tA = sorted_tables[i - 1]
-        tB = sorted_tables[i]
+        tA, tB = sorted_tables[i - 1], sorted_tables[i]
 
-        if tA.start_page is None or tB.start_page is None:
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "missing_page"))
-            continue
-
-        page_gap = tB.start_page - tA.start_page
-        if page_gap < 1 or page_gap > cfg.max_page_gap:
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "page_gap_out_of_range"))
-            continue
-
-        # Guard: skip if any table index between tA and tB was not extracted.
-        # A skipped table means an unknown fragment sits between them in
-        # document order — merging across it risks false positives.
+        # Continuity guard: if any table index between tA and tB failed to
+        # extract, an unknown fragment sits between them and merging risks
+        # false positives.
         if tB.idx - tA.idx > 1:
             gap_indices = set(range(tA.idx + 1, tB.idx))
-            if not gap_indices.issubset(extracted_indices):
-                missing = sorted(gap_indices - extracted_indices)
+            if not gap_indices.issubset(state.extracted_indices):
+                missing = sorted(gap_indices - state.extracted_indices)
                 log.debug(f"Skipping pair {tA.idx}->{tB.idx}: "
                           f"unextracted table(s) {set(missing)} between them")
-                decision_traces.append(_trace_pair(
+                state.decision_traces.append(_trace_pair(
                     tA, tB, cfg, False, "unextracted_table_between",
                     [f"unextracted table indices between pair: {missing}"],
                 ))
                 continue
 
-        posA, posB = orig_to_pos[tA.idx], orig_to_pos[tB.idx]
+        should_merge, reason, is_spillover, warnings = _classify_sequential_pair(tA, tB, cfg)
+        state.decision_traces.append(_trace_pair(tA, tB, cfg, should_merge, reason, warnings))
 
-        # --- SPILLOVER: 1-column fragment = cell overflow ---
-        if is_spillover_fragment(tA, tB, cfg):
-            spillover_targets[tB.idx] = tA.idx
-            uf.union(posA, posB)
-            decision_traces.append(_trace_pair(tA, tB, cfg, True, "spillover"))
-            log.debug(f"Spillover: Table {tB.idx} -> Table {tA.idx}")
+        if not should_merge:
             continue
 
-        # --- ORPHAN HEADER starts a new table: don't merge into tA ---
-        # A header-orphan fragment is structurally a lone header row for the
-        # NEXT table, not a continuation of the previous one. Skip the merge
-        # attempt; later passes pair it with its own data fragment.
-        if tB.is_header_orphan:
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "right_header_orphan_starts_next_table"))
-            continue
+        if is_spillover:
+            state.spillover_targets[tB.idx] = tA.idx
 
-        # --- WIDTH CHECK ---
-        width_diff = abs(tA.width - tB.width)
-        if cfg.require_same_width and width_diff > 0:
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "require_same_width"))
-            continue
-        if width_diff > cfg.max_width_difference:
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "width_difference_too_large"))
-            continue
+        state.uf.union(state.orig_to_pos[tA.idx], state.orig_to_pos[tB.idx])
+        log.debug(f"Merge ({reason}): Table {tB.idx} -> Table {tA.idx}")
 
-        # --- HEADER ORPHAN → HEADERLESS DATA ---
-        # Header orphans often have truncated width (empty cells dropped by
-        # the parser); trust the data fragment's width when the two are
-        # consecutive and within the general width-diff tolerance.
-        if tA.is_header_orphan and tB.is_headerless:
-            uf.union(posA, posB)
-            decision_traces.append(_trace_pair(tA, tB, cfg, True, "header_orphan_to_headerless"))
-            log.debug(f"Header orphan → headerless: Table {tB.idx} -> Table {tA.idx}")
-            continue
 
-        # --- HEADERLESS CONTINUATION ---
-        if tB.is_headerless:
-            if tA.width == tB.width:
-                uf.union(posA, posB)
-                decision_traces.append(_trace_pair(tA, tB, cfg, True, "headerless_width_match"))
-                log.debug(f"Width match: Table {tB.idx} -> Table {tA.idx}")
-                continue
-
-            # Width tolerance when layout confirms continuation —
-            # real-world parser drift on headerless fragments often runs to
-            # a couple of columns (empty cells collapsed, stray single
-            # cells added). Layout confirmation prevents false positives
-            # across unrelated tables with coincidentally close widths.
-            if (width_diff <= cfg.headerless_width_tolerance
-                    and layout_suggests_continuation(tA, tB, cfg)):
-                uf.union(posA, posB)
-                decision_traces.append(_trace_pair(tA, tB, cfg, True, "headerless_width_drift_layout"))
-                log.debug(f"Width-drift headerless "
-                          f"(±{cfg.headerless_width_tolerance} + layout): "
-                          f"Table {tB.idx} -> Table {tA.idx}")
-                continue
-
-            row_sim = jaccard(tA.first_row_tokens, tB.first_row_tokens)
-            if row_sim >= cfg.row_sim_threshold:
-                uf.union(posA, posB)
-                decision_traces.append(_trace_pair(tA, tB, cfg, True, "row_similarity"))
-                log.debug(f"Row similarity: Table {tB.idx} -> Table {tA.idx}")
-                continue
-
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "headerless_no_signal"))
-
-        # --- REPEATED HEADER ---
-        else:
-            header_sim = jaccard(tA.header_tokens, tB.header_tokens)
-            if header_sim >= cfg.header_sim_strict:
-                uf.union(posA, posB)
-                decision_traces.append(_trace_pair(tA, tB, cfg, True, "header_similarity_strict"))
-                log.debug(f"Header match: Table {tB.idx} -> Table {tA.idx}")
-                continue
-
-            # Fallback: accept looser similarity when layout confirms continuation
-            if header_sim >= cfg.header_sim_loose and layout_suggests_continuation(tA, tB, cfg):
-                uf.union(posA, posB)
-                decision_traces.append(_trace_pair(tA, tB, cfg, True, "header_similarity_loose_layout"))
-                log.debug(f"Header match (loose+layout): Table {tB.idx} -> Table {tA.idx}")
-                continue
-
-            decision_traces.append(_trace_pair(tA, tB, cfg, False, "header_similarity_too_low"))
-
-    # --- PASS 2: Orphan repair ---
-    page_map = defaultdict(list)
-    for t in tables_meta:
+def _pass2_orphan_repair(state: _MergeState, cfg: MultiPageConfig) -> None:
+    """
+    Second pass: pair any not-yet-unioned fragments across pages when
+    one is a header orphan and the other is a data orphan. This catches
+    cases Pass 1 misses because the two aren't document-order-adjacent.
+    """
+    page_map: Dict[int, List[int]] = defaultdict(list)
+    for t in state.tables_meta:
         if t.start_page is not None:
             page_map[t.start_page].append(t.idx)
 
@@ -752,80 +780,100 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
                 continue
             for i in page_map[p]:
                 for j in page_map[p + off]:
-                    posI, posJ = orig_to_pos[i], orig_to_pos[j]
-                    if uf.find(posI) == uf.find(posJ):
+                    posI, posJ = state.orig_to_pos[i], state.orig_to_pos[j]
+                    if state.uf.find(posI) == state.uf.find(posJ):
                         continue
 
-                    # Same continuity guard as Pass 1: an unextracted table
-                    # sitting between i and j is an unknown fragment, and
-                    # merging across it risks false positives.
+                    # Same continuity guard as Pass 1.
                     lo, hi = (i, j) if i < j else (j, i)
                     if hi - lo > 1:
                         gap_indices = set(range(lo + 1, hi))
-                        if not gap_indices.issubset(extracted_indices):
-                            missing = sorted(gap_indices - extracted_indices)
+                        if not gap_indices.issubset(state.extracted_indices):
+                            missing = sorted(gap_indices - state.extracted_indices)
                             log.debug(f"Skipping orphan pair {i}->{j}: "
-                                      f"unextracted table(s) "
-                                      f"{set(missing)} between them")
+                                      f"unextracted table(s) {set(missing)} between them")
                             continue
 
-                    tA, tB = meta_by_idx[i], meta_by_idx[j]
+                    tA, tB = state.meta_by_idx[i], state.meta_by_idx[j]
                     should, reason = should_force_orphan_merge(tA, tB, cfg)
                     if should:
-                        uf.union(posI, posJ)
-                        decision_traces.append(_trace_pair(tA, tB, cfg, True, reason or "orphans"))
+                        state.uf.union(posI, posJ)
+                        state.decision_traces.append(
+                            _trace_pair(tA, tB, cfg, True, reason or "orphans")
+                        )
                         log.debug(f"Orphan merge ({reason}): Table {j} -> Table {i}")
 
-    # --- BUILD RESULTS ---
-    groups = defaultdict(list)
-    for t in tables_meta:
-        groups[uf.find(orig_to_pos[t.idx])].append(t.idx)
 
-    results = []
+def _apply_spillover(
+    df: pd.DataFrame,
+    pgs: Set[int],
+    spillover_members: List[int],
+    meta_by_idx: Dict[int, TableMeta],
+    cfg: MultiPageConfig,
+) -> None:
+    """
+    Stitch each spillover fragment's content into the last cell of df
+    (in-place). Extracted for readability — the build phase would
+    otherwise nest this loop four levels deep.
+    """
+    for spill_idx in spillover_members:
+        spill_meta = meta_by_idx[spill_idx]
+        if spill_meta.df.shape[0] == 0 or df.shape[0] == 0:
+            continue
+        spill_content = cfg.stitch_separator.join(
+            str(spill_meta.df.iloc[r, 0])
+            for r in range(spill_meta.df.shape[0])
+            if str(spill_meta.df.iloc[r, 0]).strip()
+        )
+        if not spill_content:
+            continue
+
+        last_row_idx = df.shape[0] - 1
+        last_col_idx = df.shape[1] - 1
+        raw_val = df.iloc[last_row_idx, last_col_idx]
+        current_val = "" if pd.isna(raw_val) else str(raw_val).strip()
+        if current_val:
+            df.iloc[last_row_idx, last_col_idx] = (
+                current_val + cfg.stitch_separator + spill_content
+            )
+        else:
+            df.iloc[last_row_idx, last_col_idx] = spill_content
+        pgs.update(spill_meta.pages)
+
+
+def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> List[LogicalTable]:
+    """
+    Collapse the union-find groups into a list of LogicalTable objects.
+    Handles spillover application, orphan-anchor vs generic build paths,
+    post-merge cell stitching, and attaches per-group merge traces.
+    """
+    groups: Dict[int, List[int]] = defaultdict(list)
+    for t in state.tables_meta:
+        groups[state.uf.find(state.orig_to_pos[t.idx])].append(t.idx)
+
+    results: List[LogicalTable] = []
     for idx, members in enumerate(groups.values()):
-        members = sorted(members, key=lambda x: (meta_by_idx[x].start_page or 0, x))
+        members = sorted(members, key=lambda x: (state.meta_by_idx[x].start_page or 0, x))
 
-        normal_members = [m for m in members if m not in spillover_targets]
-        spillover_members = [m for m in members if m in spillover_targets]
-
+        normal_members = [m for m in members if m not in state.spillover_targets]
+        spillover_members = [m for m in members if m in state.spillover_targets]
         if not normal_members:
             continue
 
-        # Find the actual header orphan (if any) to use as anchor
         header_orphan_idx = next(
-            (m for m in normal_members if meta_by_idx[m].is_header_orphan), None
+            (m for m in normal_members if state.meta_by_idx[m].is_header_orphan),
+            None,
         )
-
         if header_orphan_idx is not None:
-            df, pgs, build_warnings = _build_orphan_merged_table(header_orphan_idx, normal_members, meta_by_idx)
+            df, pgs, build_warnings = _build_orphan_merged_table(
+                header_orphan_idx, normal_members, state.meta_by_idx
+            )
         else:
-            df, pgs, build_warnings = _build_generic_merged_table(normal_members, meta_by_idx, cfg)
+            df, pgs, build_warnings = _build_generic_merged_table(
+                normal_members, state.meta_by_idx, cfg
+            )
 
-        # --- APPLY SPILLOVER CONTENT ---
-        for spill_idx in spillover_members:
-            spill_meta = meta_by_idx[spill_idx]
-            if spill_meta.df.shape[0] > 0 and df.shape[0] > 0:
-                spill_content = cfg.stitch_separator.join(
-                    str(spill_meta.df.iloc[r, 0])
-                    for r in range(spill_meta.df.shape[0])
-                    if str(spill_meta.df.iloc[r, 0]).strip()
-                )
-
-                if spill_content:
-                    last_row = df.shape[0] - 1
-                    last_col = df.shape[1] - 1
-                    raw_val = df.iloc[last_row, last_col]
-                    if pd.isna(raw_val):
-                        current_val = ""
-                    else:
-                        current_val = str(raw_val).strip()
-                    if current_val:
-                        df.iloc[last_row, last_col] = (
-                            current_val + cfg.stitch_separator + spill_content
-                        )
-                    else:
-                        df.iloc[last_row, last_col] = spill_content
-                    pgs.update(spill_meta.pages)
+        _apply_spillover(df, pgs, spillover_members, state.meta_by_idx, cfg)
 
         if len(pgs) > 1:
             df = stitch_split_cells(df, cfg.stitch_separator)
@@ -833,7 +881,7 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
 
         member_set = set(members)
         group_traces = [
-            tr for tr in decision_traces
+            tr for tr in state.decision_traces
             if tr.left_idx in member_set and tr.right_idx in member_set
         ]
         merge_reasons = [tr.reason for tr in group_traces if tr.merged]
@@ -852,3 +900,33 @@ def merge_multipage_tables(tables_meta: List[TableMeta], cfg: MultiPageConfig) -
         ))
 
     return results
+
+
+def merge_multipage_tables(
+    tables_meta: List[TableMeta],
+    cfg: MultiPageConfig,
+) -> List[LogicalTable]:
+    """
+    Merge table fragments into logical tables.
+
+    The merge engine runs in four named phases:
+
+    1. **Setup** (``_init_merge_state``) — build index maps, union-find,
+       and sort fragments into document order.
+    2. **Sequential merge** (``_pass1_sequential_merge``) — walk adjacent
+       pairs; union them by structural rules in ``_classify_sequential_pair``.
+    3. **Orphan repair** (``_pass2_orphan_repair``) — catch any header/data
+       orphan pairs Pass 1 missed.
+    4. **Build results** (``_build_logical_tables``) — group by union-find
+       root, apply spillover content, stitch split cells, attach traces.
+
+    Returns a list of ``LogicalTable`` objects, each with ``merge_reason``,
+    ``merge_traces``, and ``warnings`` populated for downstream auditing.
+    """
+    if not tables_meta:
+        return []
+
+    state = _init_merge_state(tables_meta)
+    _pass1_sequential_merge(state, cfg)
+    _pass2_orphan_repair(state, cfg)
+    return _build_logical_tables(state, cfg)

@@ -6,14 +6,14 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-from docling_core.types.doc import DoclingDocument, TableData, TableCell
+from docling_core.types.doc import DoclingDocument, TableCell, TableData
 
+from table_stitcher.adapters.base import TableStitcherAdapter
 from table_stitcher.adapters.docling import (
+    DoclingAdapter,
     _dataframe_to_docling_data,
     _grid_to_dataframe,
-    DoclingAdapter,
 )
-from table_stitcher.adapters.base import TableStitcherAdapter
 from table_stitcher.models import LogicalTable
 
 
@@ -91,59 +91,149 @@ class TestHeaderPreservation:
         """Build a TableData with a 2-row header (rowspan + colspan)."""
         # Row 0: [rowspan=2 ""], [rowspan=2 "Claim"], [colspan=3 "Amount"]
         # Row 1: [Basic], [Classic], [Elite]
-        h00 = TableCell(text="", row_span=2, col_span=1, column_header=True,
-                        row_header=False, start_row_offset_idx=0, end_row_offset_idx=2,
-                        start_col_offset_idx=0, end_col_offset_idx=1)
-        h01 = TableCell(text="Claim event(s)", row_span=2, col_span=1, column_header=True,
-                        row_header=False, start_row_offset_idx=0, end_row_offset_idx=2,
-                        start_col_offset_idx=1, end_col_offset_idx=2)
-        h02 = TableCell(text="Amount payable (S$)", row_span=1, col_span=3, column_header=True,
-                        row_header=False, start_row_offset_idx=0, end_row_offset_idx=1,
-                        start_col_offset_idx=2, end_col_offset_idx=5)
-        h10 = TableCell(text="Basic", row_span=1, col_span=1, column_header=True,
-                        row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
-                        start_col_offset_idx=2, end_col_offset_idx=3)
-        h11 = TableCell(text="Classic", row_span=1, col_span=1, column_header=True,
-                        row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
-                        start_col_offset_idx=3, end_col_offset_idx=4)
-        h12 = TableCell(text="Elite", row_span=1, col_span=1, column_header=True,
-                        row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
-                        start_col_offset_idx=4, end_col_offset_idx=5)
+        h00 = TableCell(
+            text="",
+            row_span=2,
+            col_span=1,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=0,
+            end_row_offset_idx=2,
+            start_col_offset_idx=0,
+            end_col_offset_idx=1,
+        )
+        h01 = TableCell(
+            text="Claim event(s)",
+            row_span=2,
+            col_span=1,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=0,
+            end_row_offset_idx=2,
+            start_col_offset_idx=1,
+            end_col_offset_idx=2,
+        )
+        h02 = TableCell(
+            text="Amount payable (S$)",
+            row_span=1,
+            col_span=3,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=0,
+            end_row_offset_idx=1,
+            start_col_offset_idx=2,
+            end_col_offset_idx=5,
+        )
+        h10 = TableCell(
+            text="Basic",
+            row_span=1,
+            col_span=1,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=1,
+            end_row_offset_idx=2,
+            start_col_offset_idx=2,
+            end_col_offset_idx=3,
+        )
+        h11 = TableCell(
+            text="Classic",
+            row_span=1,
+            col_span=1,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=1,
+            end_row_offset_idx=2,
+            start_col_offset_idx=3,
+            end_col_offset_idx=4,
+        )
+        h12 = TableCell(
+            text="Elite",
+            row_span=1,
+            col_span=1,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=1,
+            end_row_offset_idx=2,
+            start_col_offset_idx=4,
+            end_col_offset_idx=5,
+        )
         # Data row
-        d0 = TableCell(text="A", row_span=1, col_span=1, column_header=False,
-                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
-                       start_col_offset_idx=0, end_col_offset_idx=1)
-        d1 = TableCell(text="Death", row_span=1, col_span=1, column_header=False,
-                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
-                       start_col_offset_idx=1, end_col_offset_idx=2)
-        d2 = TableCell(text="200,000", row_span=1, col_span=1, column_header=False,
-                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
-                       start_col_offset_idx=2, end_col_offset_idx=3)
-        d3 = TableCell(text="500,000", row_span=1, col_span=1, column_header=False,
-                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
-                       start_col_offset_idx=3, end_col_offset_idx=4)
-        d4 = TableCell(text="1,000,000", row_span=1, col_span=1, column_header=False,
-                       row_header=False, start_row_offset_idx=2, end_row_offset_idx=3,
-                       start_col_offset_idx=4, end_col_offset_idx=5)
+        d0 = TableCell(
+            text="A",
+            row_span=1,
+            col_span=1,
+            column_header=False,
+            row_header=False,
+            start_row_offset_idx=2,
+            end_row_offset_idx=3,
+            start_col_offset_idx=0,
+            end_col_offset_idx=1,
+        )
+        d1 = TableCell(
+            text="Death",
+            row_span=1,
+            col_span=1,
+            column_header=False,
+            row_header=False,
+            start_row_offset_idx=2,
+            end_row_offset_idx=3,
+            start_col_offset_idx=1,
+            end_col_offset_idx=2,
+        )
+        d2 = TableCell(
+            text="200,000",
+            row_span=1,
+            col_span=1,
+            column_header=False,
+            row_header=False,
+            start_row_offset_idx=2,
+            end_row_offset_idx=3,
+            start_col_offset_idx=2,
+            end_col_offset_idx=3,
+        )
+        d3 = TableCell(
+            text="500,000",
+            row_span=1,
+            col_span=1,
+            column_header=False,
+            row_header=False,
+            start_row_offset_idx=2,
+            end_row_offset_idx=3,
+            start_col_offset_idx=3,
+            end_col_offset_idx=4,
+        )
+        d4 = TableCell(
+            text="1,000,000",
+            row_span=1,
+            col_span=1,
+            column_header=False,
+            row_header=False,
+            start_row_offset_idx=2,
+            end_row_offset_idx=3,
+            start_col_offset_idx=4,
+            end_col_offset_idx=5,
+        )
 
         all_cells = [h00, h01, h02, h10, h11, h12, d0, d1, d2, d3, d4]
         grid = [
-            [h00, h01, h02],          # header row 0
-            [h10, h11, h12],          # header row 1
-            [d0, d1, d2, d3, d4],     # data row
+            [h00, h01, h02],  # header row 0
+            [h10, h11, h12],  # header row 1
+            [d0, d1, d2, d3, d4],  # data row
         ]
         return TableData(num_rows=3, num_cols=5, table_cells=all_cells, grid=grid)
 
     def test_multirow_header_preserved(self):
         """When original_data has a 2-row header with spans, it should be reused."""
         original = self._make_multirow_header_data()
-        merged_df = pd.DataFrame({
-            "col0": ["A", "D"],
-            "col1": ["Death", "Medical"],
-            "col2": ["200,000", "3,000"],
-            "col3": ["500,000", "4,000"],
-            "col4": ["1,000,000", "5,000"],
-        })
+        merged_df = pd.DataFrame(
+            {
+                "col0": ["A", "D"],
+                "col1": ["Death", "Medical"],
+                "col2": ["200,000", "3,000"],
+                "col3": ["500,000", "4,000"],
+                "col4": ["1,000,000", "5,000"],
+            }
+        )
 
         td = _dataframe_to_docling_data(merged_df, original_data=original)
 
@@ -187,9 +277,17 @@ class TestHeaderPreservation:
     def test_single_row_header_original_still_reused(self):
         """Even a simple 1-row header from original_data should be reused."""
         cells = [
-            TableCell(text="Score", row_span=1, col_span=1, column_header=True,
-                      row_header=False, start_row_offset_idx=0, end_row_offset_idx=1,
-                      start_col_offset_idx=0, end_col_offset_idx=1),
+            TableCell(
+                text="Score",
+                row_span=1,
+                col_span=1,
+                column_header=True,
+                row_header=False,
+                start_row_offset_idx=0,
+                end_row_offset_idx=1,
+                start_col_offset_idx=0,
+                end_col_offset_idx=1,
+            ),
         ]
         original = TableData(num_rows=1, num_cols=1, table_cells=cells, grid=[cells])
 
@@ -220,18 +318,34 @@ class TestAdapterProtocol:
 # Helpers for injection tests
 # ---------------------------------------------------------------------------
 
+
 def _make_table_data(header: str, val: str) -> TableData:
     """Build a minimal 1-column, 1-row TableData."""
     cells = [
-        TableCell(text=header, row_span=1, col_span=1, column_header=True,
-                  row_header=False, start_row_offset_idx=0, end_row_offset_idx=1,
-                  start_col_offset_idx=0, end_col_offset_idx=1),
-        TableCell(text=val, row_span=1, col_span=1, column_header=False,
-                  row_header=False, start_row_offset_idx=1, end_row_offset_idx=2,
-                  start_col_offset_idx=0, end_col_offset_idx=1),
+        TableCell(
+            text=header,
+            row_span=1,
+            col_span=1,
+            column_header=True,
+            row_header=False,
+            start_row_offset_idx=0,
+            end_row_offset_idx=1,
+            start_col_offset_idx=0,
+            end_col_offset_idx=1,
+        ),
+        TableCell(
+            text=val,
+            row_span=1,
+            col_span=1,
+            column_header=False,
+            row_header=False,
+            start_row_offset_idx=1,
+            end_row_offset_idx=2,
+            start_col_offset_idx=0,
+            end_col_offset_idx=1,
+        ),
     ]
-    return TableData(num_rows=2, num_cols=1, table_cells=cells,
-                     grid=[[cells[0]], [cells[1]]])
+    return TableData(num_rows=2, num_cols=1, table_cells=cells, grid=[[cells[0]], [cells[1]]])
 
 
 def _build_doc_with_tables(n: int) -> DoclingDocument:
@@ -245,6 +359,7 @@ def _build_doc_with_tables(n: int) -> DoclingDocument:
 # ---------------------------------------------------------------------------
 # Injection & pruning tests
 # ---------------------------------------------------------------------------
+
 
 class TestInjection:
     """Test DoclingAdapter.inject() — data replacement, provenance, pruning."""
@@ -317,6 +432,7 @@ class TestInjection:
 
         # Manually set provenance on both tables
         from types import SimpleNamespace
+
         prov_a = SimpleNamespace(page_no=1, bbox=None)
         prov_b = SimpleNamespace(page_no=2, bbox=None)
         doc.tables[0].prov = [prov_a]
@@ -364,6 +480,7 @@ class TestInjection:
         fragment content that's already been merged into the anchor.
         """
         from types import SimpleNamespace
+
         doc = _build_doc_with_tables(3)
         doc.tables[1].prov = [SimpleNamespace(page_no=2, bbox=None)]
 
@@ -436,6 +553,7 @@ class TestInjection:
 # Pass-through guarantee tests
 # ---------------------------------------------------------------------------
 
+
 class TestPassThrough:
     """
     Table-stitcher must never lose data. If stitching can't process a table,
@@ -474,11 +592,12 @@ class TestPassThrough:
 
     def test_stitch_orchestrator_returns_original_on_no_tables(self):
         """TableStitcher.stitch() returns original doc when adapter finds no tables."""
-        from table_stitcher import TableStitcher, MultiPageConfig
+        from table_stitcher import MultiPageConfig, TableStitcher
 
         class EmptyAdapter:
             def extract(self, doc, cfg):
                 return []
+
             def inject(self, doc, logical_tables):
                 return doc
 
@@ -490,11 +609,12 @@ class TestPassThrough:
 
     def test_stitch_orchestrator_returns_original_on_extract_failure(self):
         """If extract() blows up, the original doc is returned."""
-        from table_stitcher import TableStitcher, MultiPageConfig
+        from table_stitcher import MultiPageConfig, TableStitcher
 
         class BrokenAdapter:
             def extract(self, doc, cfg):
                 raise RuntimeError("extraction exploded")
+
             def inject(self, doc, logical_tables):
                 return doc
 
@@ -522,31 +642,36 @@ def _mk_table(rows):
 
 
 class TestHeaderlessDetection:
-
     def test_comma_separated_decimal_flags_headerless(self):
         # Retirement-portfolio pattern: first row is data but one cell is a
         # comma-grouped dollar amount.
-        table = _mk_table([
-            ["", "Am Fds Trgt Dte Rtm 2055 R6 Fd", "13,085.03"],
-            ["ELEC DEF", "Am Fds Trgt Dte Rtm 2045 R6 Fd", "4,759.09"],
-        ])
+        table = _mk_table(
+            [
+                ["", "Am Fds Trgt Dte Rtm 2055 R6 Fd", "13,085.03"],
+                ["ELEC DEF", "Am Fds Trgt Dte Rtm 2045 R6 Fd", "4,759.09"],
+            ]
+        )
         df = _grid_to_dataframe(table, doc=None)
         assert df.attrs["is_headerless"] is True
 
     def test_value_with_paren_range_flags_headerless(self):
         # Medical-stats pattern: "280 (176, 404)" median with IQR.
-        table = _mk_table([
-            ["Platelets #/nL", "Platelets #/nL", "280 (176, 404)"],
-            ["Platelets #/nL", "Platelets #/nL", "158 (123, 240)"],
-        ])
+        table = _mk_table(
+            [
+                ["Platelets #/nL", "Platelets #/nL", "280 (176, 404)"],
+                ["Platelets #/nL", "Platelets #/nL", "158 (123, 240)"],
+            ]
+        )
         df = _grid_to_dataframe(table, doc=None)
         assert df.attrs["is_headerless"] is True
 
     def test_scientific_notation_flags_headerless(self):
-        table = _mk_table([
-            ["Result", "p-value", "7.0 x 10-7"],
-            ["A", "B", "1.0 x 10-3"],
-        ])
+        table = _mk_table(
+            [
+                ["Result", "p-value", "7.0 x 10-7"],
+                ["A", "B", "1.0 x 10-3"],
+            ]
+        )
         df = _grid_to_dataframe(table, doc=None)
         assert df.attrs["is_headerless"] is True
 
@@ -555,20 +680,24 @@ class TestHeaderlessDetection:
         long_a = "Changes in choroidal thickness after cataract surgery"
         long_b = "Prospective observational study of 80 eyes"
         long_c = "Manual tracing of RPE and choroidal-scleral interface"
-        table = _mk_table([
-            ["Column_0", long_a, long_b, long_c, "Spectral domain"],
-            ["data1", "data2", "data3", "data4", "data5"],
-        ])
+        table = _mk_table(
+            [
+                ["Column_0", long_a, long_b, long_c, "Spectral domain"],
+                ["data1", "data2", "data3", "data4", "data5"],
+            ]
+        )
         df = _grid_to_dataframe(table, doc=None)
         assert df.attrs["is_headerless"] is True
 
     def test_legitimate_short_headers_stay_header(self):
         # Regression guard: ordinary headers (all short, not data-shaped)
         # must NOT be flagged headerless.
-        table = _mk_table([
-            ["Contribution Type", "Investment Name", "Total"],
-            ["ELEC DEF", "Am Fds 2055", "110.12"],
-        ])
+        table = _mk_table(
+            [
+                ["Contribution Type", "Investment Name", "Total"],
+                ["ELEC DEF", "Am Fds 2055", "110.12"],
+            ]
+        )
         df = _grid_to_dataframe(table, doc=None)
         assert df.attrs["is_headerless"] is False
         assert list(df.columns) == ["Contribution Type", "Investment Name", "Total"]

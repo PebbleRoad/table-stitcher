@@ -40,6 +40,10 @@ dev = [
     "docling-core>=2.50,<3",
     "pyyaml>=6.0",
     "reportlab>=4.0",
+    "ruff>=0.6",
+    "build>=1.0",
+    "twine>=5.0",
+    "pre-commit>=3.0",
 ]
 
 [project.urls]
@@ -49,6 +53,41 @@ Issues = "https://github.com/pebbleroad/table-stitcher/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/table_stitcher"]
+
+[tool.ruff]
+# Library targets >=3.9; ruff format will rewrite syntax to that floor.
+target-version = "py39"
+line-length = 100
+extend-exclude = [
+    "dist",
+    "build",
+    "tests/integration/fixtures/_synth/_generated",
+]
+
+[tool.ruff.lint]
+# Conservative starter set. Add rules when a real bug slips past, not
+# preemptively — every rule is a wall a contributor has to climb.
+#   E, W  pycodestyle
+#   F     pyflakes  (unused imports, undefined names — real bugs)
+#   I     isort     (import ordering)
+#   B     flake8-bugbear (likely-bug patterns)
+#   UP    pyupgrade (modern py3.9+ idioms)
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = [
+    "E501",  # line-length is enforced by `ruff format`; lint pass shouldn't double-flag
+    "B008",  # function-call-in-default-argument is a real footgun, but pandas/dataclasses make it noisy here
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py re-exports public surface; F401 (unused import) is the point.
+"src/table_stitcher/__init__.py" = ["F401"]
+# Tests assert on shapes; allow `assert` and longer expressions.
+"tests/**" = ["B011"]
+
+[tool.ruff.format]
+# Defaults: double quotes, 4-space indent. Listed for discoverability.
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

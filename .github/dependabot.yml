@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Python deps in pyproject.toml — bumps `pandas`, `docling`, dev tools.
+  # Weekly cadence avoids PR spam; security advisories are picked up out-of-band.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Group dev-only deps so a routine ruff/pytest bump doesn't
+      # produce three separate PRs in one week.
+      dev-tooling:
+        patterns:
+          - "ruff"
+          - "pytest*"
+          - "build"
+          - "twine"
+          - "pre-commit"
+
+  # GitHub Actions versions in .github/workflows/*.yml — keeps action
+  # references current (e.g. actions/checkout@v4 → @v5 when stable).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

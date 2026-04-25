@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, List, Set, Optional, Dict, Literal
+from typing import Any, Literal, Optional
 
 import pandas as pd
 
@@ -29,7 +29,9 @@ class MultiPageConfig:
     max_width_difference: int = 4
     """Maximum allowed difference in column count for merging."""
 
-    width_overflow_policy: Literal["preserve_extra", "warn_drop", "fail", "merge_tail"] = "preserve_extra"
+    width_overflow_policy: Literal["preserve_extra", "warn_drop", "fail", "merge_tail"] = (
+        "preserve_extra"
+    )
     """
     How to handle a continuation fragment with more columns than the anchor.
 
@@ -98,14 +100,15 @@ class MultiPageConfig:
 @dataclass
 class TableMeta:
     """Metadata for a single extracted table fragment."""
+
     idx: int
     df: pd.DataFrame
     start_page: Optional[int]
-    pages: List[int]
+    pages: list[int]
     width: int
-    header_tokens: Set[str]
-    first_row_tokens: Set[str]
-    raw_columns: List[str]
+    header_tokens: set[str]
+    first_row_tokens: set[str]
+    raw_columns: list[str]
     vert_center: Optional[float]
     vert_top: Optional[float]
     vert_bottom: Optional[float]
@@ -113,28 +116,30 @@ class TableMeta:
     is_data_orphan: bool
     numeric_like_cols: bool
     row_count: int
-    continuation_content: List[Dict] = field(default_factory=list)
+    continuation_content: list[dict] = field(default_factory=list)
     is_headerless: bool = False
 
 
 @dataclass
 class MergeTrace:
     """Explain one adjacent-table merge decision."""
+
     left_idx: int
     right_idx: int
     merged: bool
     reason: str
-    signals: Dict[str, Any] = field(default_factory=dict)
-    warnings: List[str] = field(default_factory=list)
+    signals: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
 class LogicalTable:
     """A merged logical table spanning potentially multiple pages."""
+
     logical_index: int
-    members: List[int]
-    pages: List[int]
+    members: list[int]
+    pages: list[int]
     df: pd.DataFrame
     merge_reason: str = ""
-    merge_traces: List[MergeTrace] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    merge_traces: list[MergeTrace] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)

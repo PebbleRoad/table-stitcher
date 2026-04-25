@@ -11,16 +11,16 @@ Key Principles:
 4. New table detection: Fragments with non-matching headers are separate tables
 """
 
+import logging
 import re
 import unicodedata
-import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, List, Set, Tuple, Optional, Dict
+from typing import Any, Optional
 
 import pandas as pd
 
-from .models import MultiPageConfig, TableMeta, LogicalTable, MergeTrace
+from .models import LogicalTable, MergeTrace, MultiPageConfig, TableMeta
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 # 1. UTILITY FUNCTIONS
 # -------------------------------------------------------------------
+
 
 def normalize_col_name(col: Any) -> str:
     """Normalize column name for comparison."""
@@ -43,8 +44,8 @@ def normalize_col_name(col: Any) -> str:
 # This list is bounded — Unicode regularly adds new scripts, but almost all
 # new scripts are whitespace-using (and therefore handled as words without
 # a code change). Only the separator-less family needs enumeration.
-_SEPARATORLESS_SCRIPTS: Set[str] = {
-    "Han",       # Chinese / Japanese kanji / Korean hanja
+_SEPARATORLESS_SCRIPTS: set[str] = {
+    "Han",  # Chinese / Japanese kanji / Korean hanja
     "Hiragana",
     "Katakana",
     "Hangul",
@@ -58,9 +59,9 @@ _SEPARATORLESS_SCRIPTS: Set[str] = {
 # Map a substring of the Unicode character name to a script tag. Unicode
 # character names are standardized and frozen, so this mapping is stable
 # across Python and Unicode releases.
-_NAME_TO_SCRIPT: List[Tuple[str, str]] = [
+_NAME_TO_SCRIPT: list[tuple[str, str]] = [
     ("CJK", "Han"),
-    ("KANGXI", "Han"),          # e.g. U+2F49 "KANGXI RADICAL MOON"
+    ("KANGXI", "Han"),  # e.g. U+2F49 "KANGXI RADICAL MOON"
     ("HIRAGANA", "Hiragana"),
     ("KATAKANA", "Katakana"),
     ("HANGUL", "Hangul"),
@@ -74,7 +75,7 @@ _NAME_TO_SCRIPT: List[Tuple[str, str]] = [
 
 def _script_of(ch: str) -> Optional[str]:
     """Return a script tag for `ch`, or None for scripts that use whitespace."""
-    if ord(ch) < 128:   # ASCII fast path — by far the common case in Latin text
+    if ord(ch) < 128:  # ASCII fast path — by far the common case in Latin text
         return None
     name = unicodedata.name(ch, "")
     if not name:
@@ -85,7 +86,7 @@ def _script_of(ch: str) -> Optional[str]:
     return None
 
 
-def tokenize(text: str) -> Set[str]:
+def tokenize(text: str) -> set[str]:
     """
     Extract tokens for Jaccard similarity comparison — script-aware.
 
@@ -103,8 +104,8 @@ def tokenize(text: str) -> Set[str]:
     Mixed-script text (e.g., "Sales + non-Latin run") produces the union of
     both token sets.
     """
-    tokens: Set[str] = set()
-    buf: List[str] = []
+    tokens: set[str] = set()
+    buf: list[str] = []
     for ch in str(text):
         # Check script BEFORE isalpha: Kangxi radicals (U+2F00–U+2FDF) and
         # some CJK compatibility characters are classed as symbols, not
@@ -126,7 +127,7 @@ def tokenize(text: str) -> Set[str]:
     return tokens
 
 
-def jaccard(a: Set[str], b: Set[str]) -> float:
+def jaccard(a: set[str], b: set[str]) -> float:
     """Calculate Jaccard similarity between two sets."""
     if not a and not b:
         return 0.0
@@ -135,7 +136,7 @@ def jaccard(a: Set[str], b: Set[str]) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def is_numeric_like_colnames(cols: List[Any]) -> bool:
+def is_numeric_like_colnames(cols: list[Any]) -> bool:
     """Check if column names look auto-generated (numeric or 'Unnamed')."""
     if not cols:
         return False
@@ -186,7 +187,7 @@ def clean_all_headers(df: pd.DataFrame) -> pd.DataFrame:
     return df_copy
 
 
-def _pair_signals(tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig) -> Dict[str, Any]:
+def _pair_signals(tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig) -> dict[str, Any]:
     """Collect stable, parser-neutral signals for merge explanations."""
     page_gap = None
     if tA.start_page is not None and tB.start_page is not None:
@@ -217,7 +218,7 @@ def _trace_pair(
     cfg: MultiPageConfig,
     merged: bool,
     reason: str,
-    warnings: Optional[List[str]] = None,
+    warnings: Optional[list[str]] = None,
 ) -> MergeTrace:
     """Build a MergeTrace for one adjacent pair."""
     return MergeTrace(
@@ -233,6 +234,7 @@ def _trace_pair(
 # -------------------------------------------------------------------
 # 2. UNION-FIND DATA STRUCTURE
 # -------------------------------------------------------------------
+
 
 class UnionFind:
     """Union-Find (Disjoint Set) for grouping table fragments."""
@@ -262,6 +264,7 @@ class UnionFind:
 # 3. MERGE DECISION LOGIC
 # -------------------------------------------------------------------
 
+
 def layout_suggests_continuation(tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig) -> bool:
     """
     Check if vertical positions suggest tB continues tA.
@@ -283,7 +286,7 @@ def layout_suggests_continuation(tA: TableMeta, tB: TableMeta, cfg: MultiPageCon
     return a_near_bottom and b_near_top
 
 
-def should_force_orphan_merge(h: TableMeta, d: TableMeta, cfg: MultiPageConfig) -> Tuple[bool, str]:
+def should_force_orphan_merge(h: TableMeta, d: TableMeta, cfg: MultiPageConfig) -> tuple[bool, str]:
     """Check if header orphan + data orphan should merge."""
     if h.start_page is None or d.start_page is None:
         return False, ""
@@ -332,10 +335,10 @@ def is_spillover_fragment(tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig) ->
 
     first_cell = str(tB.df.iloc[0, 0]).lower()
     looks_like_continuation = (
-        "http" in first_cell or
-        "://" in first_cell or
-        bool(re.search(r'[A-Z]+-\d+', str(tB.df.iloc[0, 0]))) or
-        tB.row_count <= 2
+        "http" in first_cell
+        or "://" in first_cell
+        or bool(re.search(r"[A-Z]+-\d+", str(tB.df.iloc[0, 0])))
+        or tB.row_count <= 2
     )
     return looks_like_continuation
 
@@ -343,6 +346,7 @@ def is_spillover_fragment(tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig) ->
 # -------------------------------------------------------------------
 # 4. TABLE BUILDING (Post-Merge)
 # -------------------------------------------------------------------
+
 
 def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
     """
@@ -371,8 +375,7 @@ def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
 
         while j < n:
             next_row_vals = df.iloc[j].tolist()
-            nonempty_idxs = [k for k, v in enumerate(next_row_vals)
-                             if not is_empty_value(v)]
+            nonempty_idxs = [k for k, v in enumerate(next_row_vals) if not is_empty_value(v)]
 
             if len(nonempty_idxs) != 1:
                 break
@@ -384,9 +387,9 @@ def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
             is_url = "://" in cont_val or cont_val.lower().startswith("http")
             if is_url:
                 candidates = [
-                    k for k, c in enumerate(cols)
-                    if any(x in str(c).lower()
-                           for x in ['content', 'ref', 'desc', 'link', 'url'])
+                    k
+                    for k, c in enumerate(cols)
+                    if any(x in str(c).lower() for x in ["content", "ref", "desc", "link", "url"])
                 ]
                 if candidates:
                     target_idx = candidates[-1]
@@ -409,7 +412,7 @@ def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
 _VALID_WIDTH_OVERFLOW_POLICIES = {"preserve_extra", "warn_drop", "fail", "merge_tail"}
 
 
-def _pad_narrow(df: pd.DataFrame, canonical_cols: List[str]) -> pd.DataFrame:
+def _pad_narrow(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFrame:
     """Right-pad a narrower fragment with empty ``_pad_N`` columns."""
     df_copy = df.copy()
     for k in range(df.shape[1], len(canonical_cols)):
@@ -420,9 +423,9 @@ def _pad_narrow(df: pd.DataFrame, canonical_cols: List[str]) -> pd.DataFrame:
 
 
 def _overflow_fail(
-    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+    df: pd.DataFrame, canonical_cols: list[str], source_meta: TableMeta, cfg: MultiPageConfig
 ) -> pd.DataFrame:
-    dropped_cols = [str(c) for c in df.columns[len(canonical_cols):]]
+    dropped_cols = [str(c) for c in df.columns[len(canonical_cols) :]]
     raise ValueError(
         f"Fragment idx={getattr(source_meta, 'idx', None)} "
         f"page={getattr(source_meta, 'start_page', None)} has {df.shape[1]} columns, "
@@ -431,10 +434,10 @@ def _overflow_fail(
 
 
 def _overflow_warn_drop(
-    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+    df: pd.DataFrame, canonical_cols: list[str], source_meta: TableMeta, cfg: MultiPageConfig
 ) -> pd.DataFrame:
     dropped = df.shape[1] - len(canonical_cols)
-    dropped_cols = [str(c) for c in df.columns[len(canonical_cols):]]
+    dropped_cols = [str(c) for c in df.columns[len(canonical_cols) :]]
     warning = (
         f"Dropped {dropped} trailing column(s) from fragment "
         f"idx={getattr(source_meta, 'idx', None)} "
@@ -443,25 +446,21 @@ def _overflow_warn_drop(
     )
     log.warning("align_dataframe_to_header: %s", warning)
 
-    df_copy = df.iloc[:, :len(canonical_cols)].copy()
+    df_copy = df.iloc[:, : len(canonical_cols)].copy()
     df_copy.columns = canonical_cols
     df_copy.attrs["table_stitcher_warnings"] = [warning]
     return df_copy
 
 
 def _overflow_merge_tail(
-    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+    df: pd.DataFrame, canonical_cols: list[str], source_meta: TableMeta, cfg: MultiPageConfig
 ) -> pd.DataFrame:
     """Fold trailing overflow cells into the last canonical column."""
     rows = []
     for _, row in df.iterrows():
         vals = list(row.tolist())
-        head_vals = vals[:len(canonical_cols)]
-        tail_vals = [
-            str(v).strip()
-            for v in vals[len(canonical_cols):]
-            if not is_empty_value(v)
-        ]
+        head_vals = vals[: len(canonical_cols)]
+        tail_vals = [str(v).strip() for v in vals[len(canonical_cols) :] if not is_empty_value(v)]
         while len(head_vals) < len(canonical_cols):
             head_vals.append("")
         if tail_vals and canonical_cols:
@@ -471,9 +470,7 @@ def _overflow_merge_tail(
                 head_vals[last_idx] = tail_text
             else:
                 head_vals[last_idx] = (
-                    str(head_vals[last_idx]).rstrip()
-                    + cfg.stitch_separator
-                    + tail_text
+                    str(head_vals[last_idx]).rstrip() + cfg.stitch_separator + tail_text
                 )
         rows.append(head_vals)
     df_copy = pd.DataFrame(rows, columns=canonical_cols)
@@ -482,13 +479,13 @@ def _overflow_merge_tail(
 
 
 def _overflow_preserve_extra(
-    df: pd.DataFrame, canonical_cols: List[str], source_meta: TableMeta, cfg: MultiPageConfig
+    df: pd.DataFrame, canonical_cols: list[str], source_meta: TableMeta, cfg: MultiPageConfig
 ) -> pd.DataFrame:
     """Keep overflow cells in explicit ``_extra_N_<origname>`` columns (default, lossless)."""
     df_copy = df.copy()
-    extra_cols: List[str] = []
+    extra_cols: list[str] = []
     used = {str(c) for c in canonical_cols}
-    for offset, col in enumerate(df.columns[len(canonical_cols):]):
+    for offset, col in enumerate(df.columns[len(canonical_cols) :]):
         base = f"_extra_{offset}_{str(col).strip() or 'column'}"
         candidate = base
         suffix = 1
@@ -512,7 +509,7 @@ _WIDTH_OVERFLOW_HANDLERS = {
 
 def align_dataframe_to_header(
     df: pd.DataFrame,
-    canonical_cols: List[str],
+    canonical_cols: list[str],
     source_meta: TableMeta,
     cfg: MultiPageConfig,
 ) -> pd.DataFrame:
@@ -549,10 +546,8 @@ def align_dataframe_to_header(
 
 
 def _build_orphan_merged_table(
-    header_idx: int,
-    all_members: List[int],
-    meta_by_idx: Dict[int, TableMeta]
-) -> Tuple[pd.DataFrame, Set[int], List[str]]:
+    header_idx: int, all_members: list[int], meta_by_idx: dict[int, TableMeta]
+) -> tuple[pd.DataFrame, set[int], list[str]]:
     """Build merged table when the anchor is a header orphan."""
     h_meta = meta_by_idx[header_idx]
 
@@ -573,12 +568,12 @@ def _build_orphan_merged_table(
 
         if m.continuation_content and not rows and prev.is_header_orphan:
             for cc in m.continuation_content:
-                if cc['col_idx'] < len(canonical_cols):
-                    canonical_cols[cc['col_idx']] += " " + cc['value']
+                if cc["col_idx"] < len(canonical_cols):
+                    canonical_cols[cc["col_idx"]] += " " + cc["value"]
         elif m.continuation_content and rows:
             for cc in m.continuation_content:
-                if cc['col_idx'] < max_w:
-                    rows[-1][cc['col_idx']] += "\n" + cc['value']
+                if cc["col_idx"] < max_w:
+                    rows[-1][cc["col_idx"]] += "\n" + cc["value"]
 
         for _, r in m.df.iterrows():
             vals = [str(v) for v in r.tolist()]
@@ -595,16 +590,14 @@ def _build_orphan_merged_table(
 
 
 def _build_generic_merged_table(
-    members: List[int],
-    meta_by_idx: Dict[int, TableMeta],
-    cfg: MultiPageConfig
-) -> Tuple[pd.DataFrame, Set[int], List[str]]:
+    members: list[int], meta_by_idx: dict[int, TableMeta], cfg: MultiPageConfig
+) -> tuple[pd.DataFrame, set[int], list[str]]:
     """Build merged table for the general case."""
     base = meta_by_idx[members[0]]
     merged_df = base.df.copy()
     canonical_cols = [str(c) for c in base.df.columns]
     merged_pages = set(base.pages)
-    warnings: List[str] = []
+    warnings: list[str] = []
     prev = base
 
     for idx in members[1:]:
@@ -613,10 +606,10 @@ def _build_generic_merged_table(
         if m.continuation_content and merged_df.shape[0] > 0:
             if (min(m.pages or [0]) - max(prev.pages or [0])) <= cfg.max_page_gap:
                 for cc in m.continuation_content:
-                    if cc['col_idx'] < merged_df.shape[1]:
-                        curr = str(merged_df.iloc[-1, cc['col_idx']])
+                    if cc["col_idx"] < merged_df.shape[1]:
+                        curr = str(merged_df.iloc[-1, cc["col_idx"]])
                         if curr and not is_empty_value(curr):
-                            merged_df.iloc[-1, cc['col_idx']] += cfg.stitch_separator + cc['value']
+                            merged_df.iloc[-1, cc["col_idx"]] += cfg.stitch_separator + cc["value"]
 
         aligned = align_dataframe_to_header(m.df, canonical_cols, m, cfg)
         warnings.extend(aligned.attrs.get("table_stitcher_warnings", []))
@@ -637,20 +630,22 @@ def _build_generic_merged_table(
 # the cross-phase data (union-find, index maps, traces).
 # -------------------------------------------------------------------
 
+
 @dataclass
 class _MergeState:
     """Mutable state passed between the phases of merge_multipage_tables."""
+
     uf: UnionFind
-    tables_meta: List[TableMeta]
-    meta_by_idx: Dict[int, TableMeta]
-    orig_to_pos: Dict[int, int]
-    sorted_tables: List[TableMeta]
-    extracted_indices: Set[int]
-    spillover_targets: Dict[int, int] = field(default_factory=dict)
-    decision_traces: List[MergeTrace] = field(default_factory=list)
+    tables_meta: list[TableMeta]
+    meta_by_idx: dict[int, TableMeta]
+    orig_to_pos: dict[int, int]
+    sorted_tables: list[TableMeta]
+    extracted_indices: set[int]
+    spillover_targets: dict[int, int] = field(default_factory=dict)
+    decision_traces: list[MergeTrace] = field(default_factory=list)
 
 
-def _init_merge_state(tables_meta: List[TableMeta]) -> _MergeState:
+def _init_merge_state(tables_meta: list[TableMeta]) -> _MergeState:
     """Build the shared state for one merge invocation."""
     # Original t.idx values may be non-contiguous when table extraction
     # fails for some tables. Positional index maps bridge that gap.
@@ -666,8 +661,10 @@ def _init_merge_state(tables_meta: List[TableMeta]) -> _MergeState:
 
 
 def _classify_sequential_pair(
-    tA: TableMeta, tB: TableMeta, cfg: MultiPageConfig,
-) -> Tuple[bool, str, bool, List[str]]:
+    tA: TableMeta,
+    tB: TableMeta,
+    cfg: MultiPageConfig,
+) -> tuple[bool, str, bool, list[str]]:
     """
     Decide whether two adjacent-in-document-order fragments should merge.
 
@@ -709,8 +706,9 @@ def _classify_sequential_pair(
     if tB.is_headerless:
         if tA.width == tB.width:
             return True, "headerless_width_match", False, []
-        if (width_diff <= cfg.headerless_width_tolerance
-                and layout_suggests_continuation(tA, tB, cfg)):
+        if width_diff <= cfg.headerless_width_tolerance and layout_suggests_continuation(
+            tA, tB, cfg
+        ):
             return True, "headerless_width_drift_layout", False, []
         if jaccard(tA.first_row_tokens, tB.first_row_tokens) >= cfg.row_sim_threshold:
             return True, "row_similarity", False, []
@@ -742,12 +740,20 @@ def _pass1_sequential_merge(state: _MergeState, cfg: MultiPageConfig) -> None:
             gap_indices = set(range(tA.idx + 1, tB.idx))
             if not gap_indices.issubset(state.extracted_indices):
                 missing = sorted(gap_indices - state.extracted_indices)
-                log.debug(f"Skipping pair {tA.idx}->{tB.idx}: "
-                          f"unextracted table(s) {set(missing)} between them")
-                state.decision_traces.append(_trace_pair(
-                    tA, tB, cfg, False, "unextracted_table_between",
-                    [f"unextracted table indices between pair: {missing}"],
-                ))
+                log.debug(
+                    f"Skipping pair {tA.idx}->{tB.idx}: "
+                    f"unextracted table(s) {set(missing)} between them"
+                )
+                state.decision_traces.append(
+                    _trace_pair(
+                        tA,
+                        tB,
+                        cfg,
+                        False,
+                        "unextracted_table_between",
+                        [f"unextracted table indices between pair: {missing}"],
+                    )
+                )
                 continue
 
         should_merge, reason, is_spillover, warnings = _classify_sequential_pair(tA, tB, cfg)
@@ -769,7 +775,7 @@ def _pass2_orphan_repair(state: _MergeState, cfg: MultiPageConfig) -> None:
     one is a header orphan and the other is a data orphan. This catches
     cases Pass 1 misses because the two aren't document-order-adjacent.
     """
-    page_map: Dict[int, List[int]] = defaultdict(list)
+    page_map: dict[int, list[int]] = defaultdict(list)
     for t in state.tables_meta:
         if t.start_page is not None:
             page_map[t.start_page].append(t.idx)
@@ -790,8 +796,10 @@ def _pass2_orphan_repair(state: _MergeState, cfg: MultiPageConfig) -> None:
                         gap_indices = set(range(lo + 1, hi))
                         if not gap_indices.issubset(state.extracted_indices):
                             missing = sorted(gap_indices - state.extracted_indices)
-                            log.debug(f"Skipping orphan pair {i}->{j}: "
-                                      f"unextracted table(s) {set(missing)} between them")
+                            log.debug(
+                                f"Skipping orphan pair {i}->{j}: "
+                                f"unextracted table(s) {set(missing)} between them"
+                            )
                             continue
 
                     tA, tB = state.meta_by_idx[i], state.meta_by_idx[j]
@@ -806,9 +814,9 @@ def _pass2_orphan_repair(state: _MergeState, cfg: MultiPageConfig) -> None:
 
 def _apply_spillover(
     df: pd.DataFrame,
-    pgs: Set[int],
-    spillover_members: List[int],
-    meta_by_idx: Dict[int, TableMeta],
+    pgs: set[int],
+    spillover_members: list[int],
+    meta_by_idx: dict[int, TableMeta],
     cfg: MultiPageConfig,
 ) -> None:
     """
@@ -833,25 +841,23 @@ def _apply_spillover(
         raw_val = df.iloc[last_row_idx, last_col_idx]
         current_val = "" if pd.isna(raw_val) else str(raw_val).strip()
         if current_val:
-            df.iloc[last_row_idx, last_col_idx] = (
-                current_val + cfg.stitch_separator + spill_content
-            )
+            df.iloc[last_row_idx, last_col_idx] = current_val + cfg.stitch_separator + spill_content
         else:
             df.iloc[last_row_idx, last_col_idx] = spill_content
         pgs.update(spill_meta.pages)
 
 
-def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> List[LogicalTable]:
+def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> list[LogicalTable]:
     """
     Collapse the union-find groups into a list of LogicalTable objects.
     Handles spillover application, orphan-anchor vs generic build paths,
     post-merge cell stitching, and attaches per-group merge traces.
     """
-    groups: Dict[int, List[int]] = defaultdict(list)
+    groups: dict[int, list[int]] = defaultdict(list)
     for t in state.tables_meta:
         groups[state.uf.find(state.orig_to_pos[t.idx])].append(t.idx)
 
-    results: List[LogicalTable] = []
+    results: list[LogicalTable] = []
     for idx, members in enumerate(groups.values()):
         members = sorted(members, key=lambda x: (state.meta_by_idx[x].start_page or 0, x))
 
@@ -881,7 +887,8 @@ def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> List[Logi
 
         member_set = set(members)
         group_traces = [
-            tr for tr in state.decision_traces
+            tr
+            for tr in state.decision_traces
             if tr.left_idx in member_set and tr.right_idx in member_set
         ]
         merge_reasons = [tr.reason for tr in group_traces if tr.merged]
@@ -889,23 +896,25 @@ def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> List[Logi
         for tr in group_traces:
             group_warnings.extend(tr.warnings)
 
-        results.append(LogicalTable(
-            idx,
-            members,
-            sorted(pgs),
-            df,
-            merge_reason="+".join(merge_reasons),
-            merge_traces=group_traces,
-            warnings=group_warnings,
-        ))
+        results.append(
+            LogicalTable(
+                idx,
+                members,
+                sorted(pgs),
+                df,
+                merge_reason="+".join(merge_reasons),
+                merge_traces=group_traces,
+                warnings=group_warnings,
+            )
+        )
 
     return results
 
 
 def merge_multipage_tables(
-    tables_meta: List[TableMeta],
+    tables_meta: list[TableMeta],
     cfg: MultiPageConfig,
-) -> List[LogicalTable]:
+) -> list[LogicalTable]:
     """
     Merge table fragments into logical tables.
 

@@ -7,10 +7,11 @@ Usage:
 
 import logging
 from pathlib import Path
+
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
 
-from table_stitcher import stitch_tables, MultiPageConfig
+from table_stitcher import MultiPageConfig, stitch_tables
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("SystemController")
@@ -77,6 +78,7 @@ def run_pipeline_and_save(pdf_path: str):
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) < 2:
         print("Usage: python examples/system_controller.py <pdf_file>")
         sys.exit(1)

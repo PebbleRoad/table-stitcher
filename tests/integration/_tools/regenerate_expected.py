@@ -19,6 +19,7 @@ Emits the regenerated YAML next to the PDF, preserving the `<slug>.<provenance>
 unless overridden), logical_tables (members, pages, shape, columns,
 first_row, last_row).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,6 +35,7 @@ from table_stitcher.merger import merge_multipage_tables
 
 def _cell(v) -> str:
     import pandas as pd
+
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return ""
     return str(v)
@@ -44,10 +46,12 @@ def _expected_path_for(pdf: Path) -> Path:
     return pdf.parent / (pdf.name[: -len(".pdf")] + ".expected.yaml")
 
 
-def regenerate(pdf_path: Path,
-               description: str | None = None,
-               xfail: str | None = None,
-               clear_xfail: bool = False) -> Path:
+def regenerate(
+    pdf_path: Path,
+    description: str | None = None,
+    xfail: str | None = None,
+    clear_xfail: bool = False,
+) -> Path:
     if not pdf_path.is_file():
         raise FileNotFoundError(pdf_path)
 
@@ -97,21 +101,30 @@ def regenerate(pdf_path: Path,
         spec["xfail"] = effective_xfail
     spec["logical_tables"] = entries
 
-    yaml_path.write_text(yaml.safe_dump(
-        spec, sort_keys=False, allow_unicode=True, width=100,
-    ))
+    yaml_path.write_text(
+        yaml.safe_dump(
+            spec,
+            sort_keys=False,
+            allow_unicode=True,
+            width=100,
+        )
+    )
     return yaml_path
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("pdf", type=Path, help="Path to the fixture PDF")
-    p.add_argument("--description", type=str, default=None,
-                   help="Override the description (default: keep existing or blank)")
-    p.add_argument("--xfail", type=str, default=None,
-                   help="Set/update the xfail marker")
-    p.add_argument("--clear-xfail", action="store_true",
-                   help="Remove any existing xfail marker")
+    p.add_argument(
+        "--description",
+        type=str,
+        default=None,
+        help="Override the description (default: keep existing or blank)",
+    )
+    p.add_argument("--xfail", type=str, default=None, help="Set/update the xfail marker")
+    p.add_argument("--clear-xfail", action="store_true", help="Remove any existing xfail marker")
     args = p.parse_args(argv)
 
     out = regenerate(args.pdf, args.description, args.xfail, args.clear_xfail)

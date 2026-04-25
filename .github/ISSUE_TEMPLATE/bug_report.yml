@@ -1,0 +1,90 @@
+name: Bug report
+description: A merge produced wrong output, threw an unexpected error, or behaved differently than documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The fields below are what we need to reproduce
+        the issue. The biggest unknown for a table-stitching bug is usually
+        *what the upstream parser produced* — please attach a minimal fixture
+        if you can.
+
+  - type: input
+    id: version
+    attributes:
+      label: table-stitcher version
+      description: Output of `python -c "import table_stitcher; print(table_stitcher.__version__)"`
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.11.7"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: parser
+    attributes:
+      label: Upstream parser
+      description: Which extractor produced the input tables?
+      options:
+        - Docling (built-in adapter)
+        - Custom adapter
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did the merger produce, and what did you expect instead?
+      placeholder: |
+        Pages 4–5 of report.pdf contain one logical table split by a page break.
+        I expected `stitch_tables(doc)` to return one merged table; instead I
+        got two separate tables with the headers duplicated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: |
+        Smallest input + code that demonstrates the bug. If you can attach a
+        PDF fragment or a synthetic `TableMeta` list, that's ideal. See
+        [CONTRIBUTING.md](https://github.com/pebbleroad/table-stitcher/blob/main/CONTRIBUTING.md#adding-a-new-fixture)
+        for the fixture format we use internally.
+      render: python
+      placeholder: |
+        from docling.document_converter import DocumentConverter
+        from table_stitcher import stitch_tables
+
+        doc = DocumentConverter().convert("attached.pdf").document
+        result = stitch_tables(doc)
+        # observed: 2 tables; expected: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: MultiPageConfig (if non-default)
+      description: Any custom thresholds you passed via `MultiPageConfig(...)`.
+      placeholder: "MultiPageConfig(max_page_gap=2, headerless_width_tolerance=3)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traceback
+      description: Output of the merger at INFO level if relevant. Wrap in triple backticks.
+      render: shell
+    validations:
+      required: false

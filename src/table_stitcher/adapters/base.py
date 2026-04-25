@@ -6,9 +6,9 @@ two methods. The merge engine only ever sees TableMeta objects — it never
 touches parser-native document structures.
 """
 
-from typing import Any, List, runtime_checkable, Protocol
+from typing import Any, Protocol, runtime_checkable
 
-from ..models import MultiPageConfig, TableMeta, LogicalTable
+from ..models import LogicalTable, MultiPageConfig, TableMeta
 
 
 @runtime_checkable
@@ -20,7 +20,7 @@ class TableStitcherAdapter(Protocol):
     and ``inject`` to write merged results back.
     """
 
-    def extract(self, doc: Any, cfg: MultiPageConfig) -> List[TableMeta]:
+    def extract(self, doc: Any, cfg: MultiPageConfig) -> list[TableMeta]:
         """
         Read all table fragments from the parser-native document object.
 
@@ -29,7 +29,7 @@ class TableStitcherAdapter(Protocol):
         """
         ...
 
-    def inject(self, doc: Any, logical_tables: List[LogicalTable]) -> Any:
+    def inject(self, doc: Any, logical_tables: list[LogicalTable]) -> Any:
         """
         Write merged results back into the parser-native document object.
 

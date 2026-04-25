@@ -5,11 +5,13 @@ Usage:
     python examples/basic_pipeline.py "your_report.pdf"
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
+
 from docling.document_converter import DocumentConverter
-from table_stitcher import stitch_tables, MultiPageConfig
+
+from table_stitcher import MultiPageConfig, stitch_tables
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("BasicPipeline")
@@ -40,6 +42,7 @@ def run(pdf_filename: str):
     # 3. Verify JSON round-trip
     log.info("Testing JSON round-trip...")
     from docling_core.types.doc import DoclingDocument as DD
+
     json_str = doc.model_dump_json(exclude_none=True)
     reconstructed = DD.model_validate_json(json_str)
     log.info(f"Round-trip OK. Tables: {len(reconstructed.tables)}")

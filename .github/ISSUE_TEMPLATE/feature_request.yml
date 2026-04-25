@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a new merge signal, config knob, adapter, or API surface.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The library deliberately keeps merge signals **structural** (column
+        counts, header similarity, layout proximity) and avoids
+        language-specific or vocabulary-based rules. Proposals that fit that
+        model land faster — see [CONTRIBUTING.md](https://github.com/pebbleroad/table-stitcher/blob/main/CONTRIBUTING.md)
+        for context.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: A real document or pipeline where the current behavior falls short.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: |
+        Sketch the API or behavior change. New `MultiPageConfig` field?
+        New adapter? New merge phase? Pseudocode is welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What you tried already (different config, custom adapter, post-processing) and why it wasn't enough.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: structural
+    attributes:
+      label: Compatibility with the structural-only constraint
+      options:
+        - label: This proposal does **not** rely on language-specific dictionaries, vocabulary lists, or trained models.
+          required: false
+        - label: I understand the maintainers may decline language-aware proposals to keep the core multilingual.
+          required: false

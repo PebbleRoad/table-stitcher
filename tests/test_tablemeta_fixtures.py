@@ -20,7 +20,6 @@ from table_stitcher.merger import (
     tokenize,
 )
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "tablemeta"
 
 
@@ -80,6 +79,4 @@ def test_tablemeta_fixture(fixture_path: Path):
         if "columns" in exp:
             assert [str(c) for c in lt.df.columns] == exp["columns"]
         if "last_row" in exp:
-            assert [str(v) for v in lt.df.iloc[-1].tolist()] == [
-                str(v) for v in exp["last_row"]
-            ]
+            assert [str(v) for v in lt.df.iloc[-1].tolist()] == [str(v) for v in exp["last_row"]]

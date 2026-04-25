@@ -5,27 +5,27 @@ Reads tables from a DoclingDocument and writes merged results back.
 """
 
 import copy
-import re
 import logging
-from typing import Any, List, Set, Optional, Tuple
+import re
+from typing import Any, Optional
 
 import pandas as pd
 from docling_core.types.doc import (
     DoclingDocument,
-    TableData,
     TableCell,
+    TableData,
 )
 
-from ..models import (
-    MultiPageConfig,
-    TableMeta,
-    LogicalTable,
-)
 from ..merger import (
+    first_row_has_number,
+    is_numeric_like_colnames,
     normalize_col_name,
     tokenize,
-    is_numeric_like_colnames,
-    first_row_has_number,
+)
+from ..models import (
+    LogicalTable,
+    MultiPageConfig,
+    TableMeta,
 )
 
 log = logging.getLogger(__name__)
@@ -39,21 +39,22 @@ log = logging.getLogger(__name__)
 
 # Patterns a cell matches when it looks like data rather than a header.
 _DATA_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
-        r'^\d+$',
-        r'^\d+\.\d+$',
-        r'^\d{1,2}/\d{1,2}',
-        r'^\d{1,2}-\d{1,2}',
-        r'^https?://',
-        r'^[A-Z]+-\d+$',
-        r'^\$[\d,]+',
-        r'^[\d,]+\s*%$',
-        r'^Row\s*\d+',
-        r'^\d+\.\d+\.\d+',
-        r'^[\d,]+\.\d+$',               # financial: "13,085.03"
-        r'^[\d,]+$',                    # grouped integer: "1,234,567"
-        r'^\d+\.?\d*\s*\([\d,\s.]+\)',  # stat with range: "280 (176, 404)"
-        r'^\d+\.?\d*\s*[xX×]\s*10',     # scientific: "7.0 x 10-7"
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"^\d+$",
+        r"^\d+\.\d+$",
+        r"^\d{1,2}/\d{1,2}",
+        r"^\d{1,2}-\d{1,2}",
+        r"^https?://",
+        r"^[A-Z]+-\d+$",
+        r"^\$[\d,]+",
+        r"^[\d,]+\s*%$",
+        r"^Row\s*\d+",
+        r"^\d+\.\d+\.\d+",
+        r"^[\d,]+\.\d+$",  # financial: "13,085.03"
+        r"^[\d,]+$",  # grouped integer: "1,234,567"
+        r"^\d+\.?\d*\s*\([\d,\s.]+\)",  # stat with range: "280 (176, 404)"
+        r"^\d+\.?\d*\s*[xX×]\s*10",  # scientific: "7.0 x 10-7"
     ]
 ]
 
@@ -129,7 +130,8 @@ def _detect_header_orphan(df: pd.DataFrame, is_headerless: bool, max_orphan_rows
 # Docling-specific helpers (bbox / provenance)
 # -------------------------------------------------------------------
 
-def _extract_y_bounds_from_prov(prov_list: List[Any]) -> Optional[Tuple[float, float, str]]:
+
+def _extract_y_bounds_from_prov(prov_list: list[Any]) -> Optional[tuple[float, float, str]]:
     """
     Extract vertical bounds from Docling provenance data.
 
@@ -151,7 +153,7 @@ def _extract_y_bounds_from_prov(prov_list: List[Any]) -> Optional[Tuple[float, f
     return None
 
 
-def _resolve_page_height(prov_list: List[Any], doc: Any, fallback: float = 842.0) -> float:
+def _resolve_page_height(prov_list: list[Any], doc: Any, fallback: float = 842.0) -> float:
     """
     Look up the actual page height for the first prov entry from the document.
     Falls back to A4 (842pt) only when the document does not expose a size.
@@ -172,9 +174,9 @@ def _resolve_page_height(prov_list: List[Any], doc: Any, fallback: float = 842.0
 
 
 def _compute_vertical_positions(
-    prov_list: List[Any],
+    prov_list: list[Any],
     page_height: float = 842.0,
-) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
     """
     Compute normalized vertical positions (0-1 scale, top=0, bottom=1).
 
@@ -207,11 +209,12 @@ def _compute_vertical_positions(
 # Grid-to-DataFrame conversion (Docling-specific)
 # -------------------------------------------------------------------
 
+
 def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
     """
     Convert Docling table grid to DataFrame with intelligent header detection.
     """
-    if not hasattr(table, 'data') or not table.data or not hasattr(table.data, 'grid'):
+    if not hasattr(table, "data") or not table.data or not hasattr(table.data, "grid"):
         return table.export_to_dataframe(doc=doc)
 
     grid = table.data.grid
@@ -220,7 +223,7 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
 
     all_rows = []
     for row in grid:
-        row_data = [getattr(cell, 'text', str(cell)) if cell else '' for cell in row]
+        row_data = [getattr(cell, "text", str(cell)) if cell else "" for cell in row]
         all_rows.append(row_data)
 
     if not all_rows:
@@ -245,7 +248,7 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
         unique_vals = set(non_empty_vals)
         repetition_ratio = len(unique_vals) / len(non_empty_vals)
         has_repeated_values = repetition_ratio < 0.5
-        placeholder_vals = {'DATA', 'N/A', 'NA', 'NULL', '-', '0', 'TBD', 'NONE', 'YES', 'NO'}
+        placeholder_vals = {"DATA", "N/A", "NA", "NULL", "-", "0", "TBD", "NONE", "YES", "NO"}
         has_placeholders = len(unique_vals & placeholder_vals) > 0
     else:
         has_repeated_values = False
@@ -263,8 +266,14 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
 
     is_headerless = False
 
-    if (has_data_values or has_url or is_sparse or has_repeated_values
-            or has_placeholders or has_long_cells):
+    if (
+        has_data_values
+        or has_url
+        or is_sparse
+        or has_repeated_values
+        or has_placeholders
+        or has_long_cells
+    ):
         is_headerless = True
         header = [f"Column_{i}" for i in range(num_cols)]
 
@@ -283,8 +292,8 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
     clean_header = []
     for h in header:
         h_str = str(h).strip()
-        if '.' in h_str:
-            parts = h_str.split('.')
+        if "." in h_str:
+            parts = h_str.split(".")
             if len(parts) == 2 and parts[0] == parts[1]:
                 h_str = parts[0]
         clean_header.append(h_str if h_str else f"Column_{len(clean_header)}")
@@ -294,14 +303,14 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
         for row in data_rows:
             row_copy = list(row)
             while len(row_copy) < len(clean_header):
-                row_copy.append('')
-            normalized_rows.append(row_copy[:len(clean_header)])
+                row_copy.append("")
+            normalized_rows.append(row_copy[: len(clean_header)])
         df = pd.DataFrame(normalized_rows, columns=clean_header)
     else:
         df = pd.DataFrame(columns=clean_header)
 
-    df.attrs['pre_header_rows'] = pre_header_rows
-    df.attrs['is_headerless'] = is_headerless
+    df.attrs["pre_header_rows"] = pre_header_rows
+    df.attrs["is_headerless"] = is_headerless
     return df
 
 
@@ -309,9 +318,10 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
 # DataFrame → Docling TableData conversion
 # -------------------------------------------------------------------
 
+
 def _extract_original_header_rows(
     original_data: Optional[TableData],
-) -> Tuple[List[List[TableCell]], List[TableCell]]:
+) -> tuple[list[list[TableCell]], list[TableCell]]:
     """
     Extract header rows from the anchor table's original grid.
 
@@ -322,11 +332,11 @@ def _extract_original_header_rows(
     if not original_data or not original_data.grid:
         return [], []
 
-    header_rows: List[List[TableCell]] = []
-    header_cells: List[TableCell] = []
+    header_rows: list[list[TableCell]] = []
+    header_cells: list[TableCell] = []
 
     for row in original_data.grid:
-        if row and any(getattr(c, 'column_header', False) for c in row if c):
+        if row and any(getattr(c, "column_header", False) for c in row if c):
             header_rows.append(row)
             header_cells.extend(c for c in row if c)
         else:
@@ -379,8 +389,8 @@ def _dataframe_to_docling_data(
     if orig_header_rows:
         # Use original header rows as-is
         num_header_rows = len(orig_header_rows)
-        grid: List[List[TableCell]] = list(orig_header_rows)
-        table_cells: List[TableCell] = list(orig_header_cells)
+        grid: list[list[TableCell]] = list(orig_header_rows)
+        table_cells: list[TableCell] = list(orig_header_cells)
     else:
         # Fall back to building flat 1x1 header from DataFrame columns
         num_header_rows = 1
@@ -410,13 +420,13 @@ def _dataframe_to_docling_data(
     if original_data and original_data.grid:
         for row in original_data.grid[num_header_rows:]:
             if row and len(row) > 0 and row[0]:
-                if getattr(row[0], 'row_header', False):
+                if getattr(row[0], "row_header", False):
                     has_row_headers = True
                     break
 
     # --- Build data rows from merged DataFrame ---
     for i, (_, row) in enumerate(df.iterrows()):
-        grid_row: List[TableCell] = []
+        grid_row: list[TableCell] = []
         table_row_idx = num_header_rows + i
 
         for j, val in enumerate(row):
@@ -425,7 +435,7 @@ def _dataframe_to_docling_data(
             else:
                 text_val = str(val)
 
-            row_header = (j == 0 and has_row_headers)
+            row_header = j == 0 and has_row_headers
 
             cell = TableCell(
                 text=text_val,
@@ -445,17 +455,13 @@ def _dataframe_to_docling_data(
 
     num_total_rows = num_header_rows + len(df)
 
-    return TableData(
-        num_rows=num_total_rows,
-        num_cols=num_cols,
-        table_cells=table_cells,
-        grid=grid
-    )
+    return TableData(num_rows=num_total_rows, num_cols=num_cols, table_cells=table_cells, grid=grid)
 
 
 # -------------------------------------------------------------------
 # Reference pointer helper
 # -------------------------------------------------------------------
+
 
 def _get_ref_pointer(ref_obj: Any) -> str:
     """Safely extract the string pointer (e.g., '#/tables/1') from a Ref object."""
@@ -476,6 +482,7 @@ def _get_ref_pointer(ref_obj: Any) -> str:
 # DoclingAdapter
 # -------------------------------------------------------------------
 
+
 class DoclingAdapter:
     """
     Table-stitcher adapter for Docling (docling-core).
@@ -483,9 +490,9 @@ class DoclingAdapter:
     Reads tables from a ``DoclingDocument`` and writes merged results back.
     """
 
-    def extract(self, doc: DoclingDocument, cfg: MultiPageConfig) -> List[TableMeta]:
+    def extract(self, doc: DoclingDocument, cfg: MultiPageConfig) -> list[TableMeta]:
         """Extract metadata from all tables in a DoclingDocument."""
-        tables_meta: List[TableMeta] = []
+        tables_meta: list[TableMeta] = []
         total = len(doc.tables)
         skipped = 0
 
@@ -493,30 +500,32 @@ class DoclingAdapter:
             try:
                 df = _grid_to_dataframe(table, doc)
             except Exception as e:
-                log.warning(f"Skipping table {idx}/{total}: extraction failed ({e}). "
-                            "Original table will be preserved unchanged.")
+                log.warning(
+                    f"Skipping table {idx}/{total}: extraction failed ({e}). "
+                    "Original table will be preserved unchanged."
+                )
                 skipped += 1
                 continue
 
             continuation_content = []
-            pre_header_rows = df.attrs.get('pre_header_rows', [])
-            is_headerless = df.attrs.get('is_headerless', False)
+            pre_header_rows = df.attrs.get("pre_header_rows", [])
+            is_headerless = df.attrs.get("is_headerless", False)
 
             if pre_header_rows:
                 for row in pre_header_rows:
                     non_empty = [(i, v) for i, v in enumerate(row) if v and v.strip()]
                     for col_idx, val in non_empty:
-                        continuation_content.append({'col_idx': col_idx, 'value': val})
+                        continuation_content.append({"col_idx": col_idx, "value": val})
 
             prov = getattr(table, "prov", None) or []
             pages = sorted({p.page_no for p in prov}) if prov else []
             start_page = pages[0] if pages else None
 
-            header_tokens: Set[str] = set()
+            header_tokens: set[str] = set()
             for col in df.columns:
                 header_tokens |= tokenize(normalize_col_name(col))
 
-            first_row_tokens: Set[str] = set()
+            first_row_tokens: set[str] = set()
             if df.shape[0] > 0:
                 row_text = " ".join(str(x) for x in df.iloc[0].tolist())
                 first_row_tokens = tokenize(row_text)
@@ -531,43 +540,45 @@ class DoclingAdapter:
             raw_columns = [str(c) for c in df.columns]
             numeric_like_cols = is_numeric_like_colnames(raw_columns)
 
-            is_header_orphan = _detect_header_orphan(
-                df, is_headerless, cfg.max_orphan_rows
-            )
+            is_header_orphan = _detect_header_orphan(df, is_headerless, cfg.max_orphan_rows)
 
             is_data_orphan = (
-                df.shape[0] > 0 and
-                df.shape[0] <= cfg.max_data_orphan_rows and
-                first_row_has_number(df)
+                df.shape[0] > 0
+                and df.shape[0] <= cfg.max_data_orphan_rows
+                and first_row_has_number(df)
             )
 
-            tables_meta.append(TableMeta(
-                idx=idx,
-                df=df,
-                start_page=start_page,
-                pages=pages,
-                width=df.shape[1],
-                header_tokens=header_tokens,
-                first_row_tokens=first_row_tokens,
-                raw_columns=raw_columns,
-                vert_center=vert_center,
-                vert_top=vert_top,
-                vert_bottom=vert_bottom,
-                is_header_orphan=is_header_orphan,
-                is_data_orphan=is_data_orphan,
-                numeric_like_cols=numeric_like_cols,
-                row_count=df.shape[0],
-                continuation_content=continuation_content,
-                is_headerless=is_headerless
-            ))
+            tables_meta.append(
+                TableMeta(
+                    idx=idx,
+                    df=df,
+                    start_page=start_page,
+                    pages=pages,
+                    width=df.shape[1],
+                    header_tokens=header_tokens,
+                    first_row_tokens=first_row_tokens,
+                    raw_columns=raw_columns,
+                    vert_center=vert_center,
+                    vert_top=vert_top,
+                    vert_bottom=vert_bottom,
+                    is_header_orphan=is_header_orphan,
+                    is_data_orphan=is_data_orphan,
+                    numeric_like_cols=numeric_like_cols,
+                    row_count=df.shape[0],
+                    continuation_content=continuation_content,
+                    is_headerless=is_headerless,
+                )
+            )
 
         if skipped:
-            log.warning(f"Extracted {len(tables_meta)}/{total} tables "
-                        f"({skipped} skipped — originals preserved)")
+            log.warning(
+                f"Extracted {len(tables_meta)}/{total} tables "
+                f"({skipped} skipped — originals preserved)"
+            )
 
         return tables_meta
 
-    def inject(self, doc: DoclingDocument, logical_tables: List[LogicalTable]) -> DoclingDocument:
+    def inject(self, doc: DoclingDocument, logical_tables: list[LogicalTable]) -> DoclingDocument:
         """
         Modify the DoclingDocument in-place with merged table data.
 
@@ -579,7 +590,7 @@ class DoclingAdapter:
         """
         log.info("Starting DoclingDocument injection...")
 
-        refs_to_remove: Set[str] = set()
+        refs_to_remove: set[str] = set()
         table_snapshots = {
             idx: {
                 "data": getattr(table, "data", None),
@@ -619,16 +630,20 @@ class DoclingAdapter:
                     continue
 
                 if len(lt.members) == 1:
-                    log.debug(f"Skipping single-table {lt.members[0]} - preserving original structure")
+                    log.debug(
+                        f"Skipping single-table {lt.members[0]} - preserving original structure"
+                    )
                     continue
 
                 anchor_idx = lt.members[0]
                 anchor_table = doc.tables[anchor_idx]
 
-                log.info(f"Injecting Logical Table {lt.logical_index} into Anchor Table {anchor_idx} "
-                         f"(merged from {len(lt.members)} fragments)")
+                log.info(
+                    f"Injecting Logical Table {lt.logical_index} into Anchor Table {anchor_idx} "
+                    f"(merged from {len(lt.members)} fragments)"
+                )
 
-                original_data = getattr(anchor_table, 'data', None)
+                original_data = getattr(anchor_table, "data", None)
 
                 anchor_table.data = _dataframe_to_docling_data(
                     lt.df,
@@ -672,7 +687,7 @@ class DoclingAdapter:
 
             def traverse_and_prune(group_node: Any):
                 nonlocal removed_count
-                if not hasattr(group_node, 'children'):
+                if not hasattr(group_node, "children"):
                     return
 
                 new_children = []

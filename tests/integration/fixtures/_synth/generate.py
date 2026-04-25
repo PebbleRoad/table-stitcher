@@ -10,6 +10,7 @@ Hand-building keeps the trick reliable and the license clean.
 
 Requires reportlab (BSD-3). Installed via the `dev` optional extra.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,11 +19,11 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import (
-    SimpleDocTemplate,
+    PageBreak,
     Paragraph,
+    SimpleDocTemplate,
     Table,
     TableStyle,
-    PageBreak,
 )
 
 FIXTURES = Path(__file__).resolve().parents[1]
@@ -30,15 +31,17 @@ STYLES = getSampleStyleSheet()
 
 
 def _grid_style(header_bg=colors.lightgrey) -> TableStyle:
-    return TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), header_bg),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ])
+    return TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), header_bg),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +58,7 @@ def _grid_style(header_bg=colors.lightgrey) -> TableStyle:
 #   cell of tA instead of creating a separate logical table.
 # ---------------------------------------------------------------------------
 
+
 def build_spillover(out: Path) -> None:
     doc = SimpleDocTemplate(str(out), pagesize=LETTER, topMargin=36, bottomMargin=36)
 
@@ -70,18 +74,24 @@ def build_spillover(out: Path) -> None:
     # reliably detectable as a table by docling's structure model.
     continuation = Table(
         [
-            ["Continuation of the final note from page 1 — this sentence "
-             "belongs to the row above."],
+            [
+                "Continuation of the final note from page 1 — this sentence "
+                "belongs to the row above."
+            ],
             ["Second overflow line with additional context the cell couldn't fit."],
             ["Third overflow line closing out the note."],
         ],
         colWidths=[380],
     )
-    continuation.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
+    continuation.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
 
     doc.build([t, PageBreak(), continuation])
 
@@ -94,6 +104,7 @@ def build_spillover(out: Path) -> None:
 #   Page 4: a completely unrelated HR table.
 #   With the default max_page_gap=1 the merger must NOT link them.
 # ---------------------------------------------------------------------------
+
 
 def build_page_gap_too_large(out: Path) -> None:
     doc = SimpleDocTemplate(str(out), pagesize=LETTER, topMargin=36, bottomMargin=36)
@@ -130,15 +141,17 @@ def build_page_gap_too_large(out: Path) -> None:
     )
     table_two.setStyle(_grid_style())
 
-    doc.build([
-        table_one,
-        PageBreak(),
-        filler_a,
-        PageBreak(),
-        filler_b,
-        PageBreak(),
-        table_two,
-    ])
+    doc.build(
+        [
+            table_one,
+            PageBreak(),
+            filler_a,
+            PageBreak(),
+            filler_b,
+            PageBreak(),
+            table_two,
+        ]
+    )
 
 
 JOBS = [

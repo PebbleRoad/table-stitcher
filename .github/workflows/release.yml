@@ -1,0 +1,52 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Trusted Publishing requires `id-token: write`. No PyPI API token needed —
+# PyPI verifies the OIDC claim against the project's trusted-publisher config.
+# One-time setup on PyPI: Account → Publishing → Add a pending publisher with
+# repo `pebbleroad/table-stitcher`, workflow `release.yml`, environment `pypi`.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/table-stitcher
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: tag matches package version
+        # Refuse to publish if the git tag and pyproject version disagree —
+        # mismatch here is the classic source of "v0.2.0 on PyPI is actually 0.2.1".
+        run: |
+          tag="${GITHUB_REF##*/}"
+          pkg_version=$(python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          if [ "$tag" != "v${pkg_version}" ]; then
+            echo "tag $tag does not match pyproject version v$pkg_version" >&2
+            exit 1
+          fi
+      - name: release gate (build + wheel smoke + tests)
+        # Re-runs the same gate that contributors use locally. Keeps "what
+        # gets published" and "what was validated" identical.
+        env:
+          RELEASE_GATE_ONLINE: "1"
+        run: ./scripts/release_gate.sh
+      - name: publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

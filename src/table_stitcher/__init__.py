@@ -22,13 +22,13 @@ Usage (custom parser):
     doc = stitcher.stitch(doc)
 """
 
-import time
 import logging
+import time
 from typing import Any, Optional
 
-from .models import MultiPageConfig, LogicalTable, TableMeta, MergeTrace
-from .merger import merge_multipage_tables
 from .adapters.base import TableStitcherAdapter
+from .merger import merge_multipage_tables
+from .models import LogicalTable, MergeTrace, MultiPageConfig, TableMeta
 
 __version__ = "0.2.0"
 __all__ = [
@@ -48,6 +48,7 @@ __all__ = [
 
 class StitchingError(Exception):
     """Raised when table stitching fails."""
+
     pass
 
 
@@ -80,11 +81,10 @@ class TableStitcher:
         self.logger.info(f"Phase {phase_num}: {phase_name}")
         self.logger.info("=" * 70)
 
-    def _log_phase_complete(self, phase_num: int, count: int,
-                            duration: float, item_type: str = "items"):
-        self.logger.info(
-            f"Phase {phase_num} complete: {count} {item_type} [{duration:.1f}s]"
-        )
+    def _log_phase_complete(
+        self, phase_num: int, count: int, duration: float, item_type: str = "items"
+    ):
+        self.logger.info(f"Phase {phase_num} complete: {count} {item_type} [{duration:.1f}s]")
 
     def _log_section(self, message: str, indent: int = 2):
         prefix = " " * indent
@@ -182,7 +182,7 @@ class TableStitcher:
 
         # Report extraction coverage — tables that failed extraction
         # are silently preserved in the original doc (pass-through).
-        total_tables = len(getattr(doc, 'tables', []) or [])
+        total_tables = len(getattr(doc, "tables", []) or [])
         if total_tables and len(tables_meta) < total_tables:
             skipped = total_tables - len(tables_meta)
             self._log_section(
@@ -190,7 +190,9 @@ class TableStitcher:
                 f"({skipped} skipped — originals preserved)"
             )
 
-        self._log_phase_complete(1, len(tables_meta), time.time() - phase_start, "table fragments extracted")
+        self._log_phase_complete(
+            1, len(tables_meta), time.time() - phase_start, "table fragments extracted"
+        )
 
         # --- Phase 2: Analyze & Merge ---
         self._log_phase_start(2, "Analyze Multi-Page Merges")
@@ -214,11 +216,12 @@ class TableStitcher:
         for lt in multi_page_tables:
             reason = f", reason={lt.merge_reason}" if lt.merge_reason else ""
             self._log_section(
-                f"Found: Table spanning pages {lt.pages} "
-                f"({len(lt.members)} fragments{reason})"
+                f"Found: Table spanning pages {lt.pages} ({len(lt.members)} fragments{reason})"
             )
 
-        self._log_phase_complete(2, len(multi_page_tables), time.time() - phase_start, "multi-page tables identified")
+        self._log_phase_complete(
+            2, len(multi_page_tables), time.time() - phase_start, "multi-page tables identified"
+        )
 
         # --- Phase 3: Inject Merged Tables ---
         self._log_phase_start(3, "Inject Merged Tables")
@@ -235,7 +238,9 @@ class TableStitcher:
         for lt in multi_page_tables:
             self._log_item_progress(f"Merged pages {lt.pages} -> 1 table", "success")
 
-        self._log_phase_complete(3, len(multi_page_tables), time.time() - phase_start, "tables injected")
+        self._log_phase_complete(
+            3, len(multi_page_tables), time.time() - phase_start, "tables injected"
+        )
 
         return doc
 
@@ -243,6 +248,7 @@ class TableStitcher:
 # -----------------------------------------------------------------------------
 # Convenience Function
 # -----------------------------------------------------------------------------
+
 
 def stitch_tables(
     doc: Any,

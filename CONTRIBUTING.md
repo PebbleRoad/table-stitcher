@@ -6,15 +6,38 @@ workflow — the thing most contributions touch.
 ## Dev setup
 
 ```bash
-git clone <repo>
+git clone https://github.com/pebbleroad/table-stitcher.git
 cd table-stitcher
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest tests/
+
+pip install -e ".[dev]"     # 1. install the package + dev tools (ruff, pytest, build, twine, pre-commit)
+pre-commit install          # 2. enable auto-lint + auto-format on every commit
+pytest tests/               # 3. run the unit suite to confirm setup
 ```
+
+The pre-commit hook calls the ruff installed by step 1 — local and CI
+share a single ruff version, so a green pre-commit run means a green CI
+lint job.
 
 First `pytest tests/` downloads docling's models (~2 min, goes to
 `~/.cache/huggingface/`). Subsequent runs are ~3 min for the full suite.
+
+## Code style and linting
+
+We use [ruff](https://docs.astral.sh/ruff/) for both linting and formatting.
+Configuration lives in [`pyproject.toml`](pyproject.toml) under `[tool.ruff]`.
+
+The same checks run locally (via `pre-commit`), in CI (`lint` job), and as a
+release gate. A green local commit means a green CI lint job — no surprises.
+
+```bash
+ruff check .            # lint — flags real bugs (unused imports, bugbear patterns)
+ruff format .           # auto-format — opinionated, no debate
+ruff format --check .   # CI mode — fails if anything would be reformatted
+```
+
+If you skipped `pre-commit install` and a CI lint failure surprises you,
+`ruff check --fix . && ruff format .` will resolve almost all of them.
 
 ## Project layout
 
@@ -155,6 +178,8 @@ against the current corpus.
 ## Before opening a PR
 
 - [ ] `pytest tests/` is green (or xfails are intentional, with reasons in the YAML)
+- [ ] `ruff check .` and `ruff format --check .` pass (pre-commit handles this for you)
 - [ ] New fixtures have descriptions and follow the naming convention
 - [ ] Merger / adapter changes come with a unit test
+- [ ] User-visible changes have a [`CHANGELOG.md`](CHANGELOG.md) entry
 - [ ] No vocabulary or language-specific assumptions added — keep signals structural

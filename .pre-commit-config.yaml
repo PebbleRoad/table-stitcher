@@ -1,0 +1,31 @@
+# Mirror of the CI lint job. Contributors run `pre-commit install` once,
+# then every commit auto-lints + auto-formats. CI catches anything they
+# bypassed (--no-verify) or skipped.
+#
+# We use `language: system` so pre-commit invokes the ruff that
+# `pip install -e ".[dev]"` already installed. Pinning a separate ruff
+# version in this file would drift from the one CI installs and silently
+# disagree on rules and formatter output. Single source of truth: pyproject.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format
+        language: system
+        types: [python]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=2000]  # PDF fixtures are legitimately large

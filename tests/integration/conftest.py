@@ -9,12 +9,13 @@ over every expected.yaml in the tree (see test_fixtures.py).
 Docling conversion is expensive (model load + per-PDF parse), so the converter
 and each converted document are session-cached.
 """
+
 from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 import yaml
@@ -39,20 +40,22 @@ def pytest_collection_modifyitems(config, items):
 # Session-level caches
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def docling_converter():
     """One DocumentConverter per session — model load is expensive."""
     from docling.document_converter import DocumentConverter
+
     return DocumentConverter()
 
 
 @pytest.fixture(scope="session")
-def doc_cache() -> Dict[Path, Any]:
+def doc_cache() -> dict[Path, Any]:
     """Cache converted DoclingDocuments by PDF path within a session."""
     return {}
 
 
-def _convert(pdf_path: Path, converter, cache: Dict[Path, Any]):
+def _convert(pdf_path: Path, converter, cache: dict[Path, Any]):
     pdf_path = pdf_path.resolve()
     if pdf_path not in cache:
         cache[pdf_path] = converter.convert(str(pdf_path)).document
@@ -81,8 +84,8 @@ def _ref_pointer(ref_obj: Any) -> str:
     return ""
 
 
-def _body_table_refs(doc: Any) -> List[str]:
-    refs: List[str] = []
+def _body_table_refs(doc: Any) -> list[str]:
+    refs: list[str] = []
 
     def visit(node: Any):
         for child_ref in getattr(node, "children", []) or []:
@@ -103,12 +106,12 @@ def _body_table_refs(doc: Any) -> List[str]:
     return refs
 
 
-def _header_texts(table: Any) -> List[str]:
+def _header_texts(table: Any) -> list[str]:
     data = getattr(table, "data", None)
     grid = getattr(data, "grid", None) if data else None
     if not grid:
         return []
-    header_texts: List[str] = []
+    header_texts: list[str] = []
     for row in grid:
         if row and any(getattr(c, "column_header", False) for c in row if c):
             header_texts.extend(str(getattr(c, "text", "")) for c in row if c)
@@ -120,6 +123,7 @@ def _header_texts(table: Any) -> List[str]:
 # ---------------------------------------------------------------------------
 # Fixture discovery
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class FixtureCase:
@@ -133,14 +137,12 @@ class FixtureCase:
         return str(rel.with_suffix(""))
 
 
-def discover_fixtures() -> List[FixtureCase]:
+def discover_fixtures() -> list[FixtureCase]:
     cases = []
     for yaml_path in sorted(FIXTURES_DIR.rglob("*.expected.yaml")):
         pdf_path = yaml_path.parent / yaml_path.name.replace(".expected.yaml", ".pdf")
         if not pdf_path.exists():
-            raise FileNotFoundError(
-                f"Expected YAML {yaml_path} has no sibling PDF at {pdf_path}"
-            )
+            raise FileNotFoundError(f"Expected YAML {yaml_path} has no sibling PDF at {pdf_path}")
         cases.append(FixtureCase(yaml_path=yaml_path, pdf_path=pdf_path))
     return cases
 
@@ -149,9 +151,11 @@ def discover_fixtures() -> List[FixtureCase]:
 # Assertion helper
 # ---------------------------------------------------------------------------
 
+
 def _normalize_cell(v: Any) -> str:
     """Stringify for comparison — YAML scalars and DataFrame cells must match."""
     import pandas as pd
+
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return ""
     return str(v)
@@ -205,16 +209,12 @@ def assert_stitched_matches(pdf_path: Path, expected_path: Path, converter, cach
         if "first_row" in exp and lt.df.shape[0] > 0:
             actual_first = [_normalize_cell(v) for v in lt.df.iloc[0].tolist()]
             exp_first = [str(v) for v in exp["first_row"]]
-            assert actual_first == exp_first, (
-                f"{ctx}: first_row {actual_first} != {exp_first}"
-            )
+            assert actual_first == exp_first, f"{ctx}: first_row {actual_first} != {exp_first}"
 
         if "last_row" in exp and lt.df.shape[0] > 0:
             actual_last = [_normalize_cell(v) for v in lt.df.iloc[-1].tolist()]
             exp_last = [str(v) for v in exp["last_row"]]
-            assert actual_last == exp_last, (
-                f"{ctx}: last_row {actual_last} != {exp_last}"
-            )
+            assert actual_last == exp_last, f"{ctx}: last_row {actual_last} != {exp_last}"
 
 
 def assert_public_stitch_injects_docling_doc(
@@ -231,18 +231,14 @@ def assert_public_stitch_injects_docling_doc(
 
     spec = yaml.safe_load(expected_path.read_text())
     cfg = MultiPageConfig(**(spec.get("config") or {}))
-    merged_specs = [
-        exp for exp in spec["logical_tables"]
-        if len(exp.get("members", [])) > 1
-    ]
+    merged_specs = [exp for exp in spec["logical_tables"] if len(exp.get("members", [])) > 1]
     if not merged_specs:
         pytest.skip("fixture has no merged logical tables to inject")
 
     original_doc = _convert(pdf_path, converter, cache)
     doc = _copy_doc(original_doc)
     original_headers = {
-        exp["members"][0]: _header_texts(doc.tables[exp["members"][0]])
-        for exp in merged_specs
+        exp["members"][0]: _header_texts(doc.tables[exp["members"][0]]) for exp in merged_specs
     }
 
     stitched = stitch_tables(doc, config=cfg, raise_on_error=True)
@@ -262,8 +258,9 @@ def assert_public_stitch_injects_docling_doc(
             )
 
         if original_headers[anchor_idx]:
-            assert _header_texts(anchor)[:len(original_headers[anchor_idx])] == (
-                original_headers[anchor_idx]
+            assert (
+                _header_texts(anchor)[: len(original_headers[anchor_idx])]
+                == (original_headers[anchor_idx])
             ), f"{ctx}: anchor header text was not preserved"
 
         for satellite_idx in members[1:]:

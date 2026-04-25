@@ -1,5 +1,11 @@
 # Table Stitcher
 
+[![CI](https://github.com/pebbleroad/table-stitcher/actions/workflows/ci.yml/badge.svg)](https://github.com/pebbleroad/table-stitcher/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/table-stitcher.svg)](https://pypi.org/project/table-stitcher/)
+[![Python](https://img.shields.io/pypi/pyversions/table-stitcher.svg)](https://pypi.org/project/table-stitcher/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 Reassemble tables split across page boundaries in PDF extraction.
 
 PDF extraction tools often fragment a single logical table into multiple pieces when it spans pages. **Table Stitcher** detects these fragments and merges them back into coherent tables.
@@ -76,6 +82,11 @@ rowspan/colspan, cell bboxes, and prov entries are preserved exactly as
 Docling produced them. Only merged tables get their data rows rebuilt from
 the merged DataFrame; anchor headers are reused verbatim. See
 [Adapter Design Principle: Respect the Incoming Structure](#adapter-design-principle-respect-the-incoming-structure).
+
+Runnable end-to-end scripts live in [`examples/`](examples/):
+
+- [`basic_pipeline.py`](examples/basic_pipeline.py) — minimal Docling → stitch → markdown export
+- [`system_controller.py`](examples/system_controller.py) — drop-in integration for a larger pipeline
 
 ### With Configuration
 

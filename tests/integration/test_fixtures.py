@@ -9,6 +9,7 @@ A fixture YAML may declare `xfail: "<reason>"` at the top level; the parametrize
 case is then marked xfail, so the assertion is allowed to fail (useful for
 known-broken cases that document the intended behavior).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -32,9 +33,7 @@ def _params():
 
 
 @pytest.mark.parametrize("case", list(_params()))
-def test_fixture_stitches_as_expected(
-    case: FixtureCase, docling_converter, doc_cache
-) -> None:
+def test_fixture_stitches_as_expected(case: FixtureCase, docling_converter, doc_cache) -> None:
     assert_stitched_matches(case.pdf_path, case.yaml_path, docling_converter, doc_cache)
 
 

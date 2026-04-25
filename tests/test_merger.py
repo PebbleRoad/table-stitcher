@@ -5,23 +5,21 @@ Tests for the core merger module.
 import pandas as pd
 import pytest
 
-from table_stitcher.models import MultiPageConfig, TableMeta, LogicalTable
 from table_stitcher.merger import (
     UnionFind,
     align_dataframe_to_header,
-    merge_multipage_tables,
-    jaccard,
-    tokenize,
     is_numeric_like_colnames,
-    is_spillover_fragment,
-    layout_suggests_continuation,
+    jaccard,
+    merge_multipage_tables,
     stitch_split_cells,
+    tokenize,
 )
-
+from table_stitcher.models import MultiPageConfig, TableMeta
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_meta(
     idx: int,
@@ -42,9 +40,7 @@ def _make_meta(
         width=df.shape[1],
         header_tokens=tokenize(" ".join(str(c) for c in df.columns)),
         first_row_tokens=(
-            tokenize(" ".join(str(x) for x in df.iloc[0].tolist()))
-            if df.shape[0] > 0
-            else set()
+            tokenize(" ".join(str(x) for x in df.iloc[0].tolist())) if df.shape[0] > 0 else set()
         ),
         raw_columns=[str(c) for c in df.columns],
         vert_center=None,
@@ -61,6 +57,7 @@ def _make_meta(
 # ---------------------------------------------------------------------------
 # Bug 1: IndexError when table extraction skips indices
 # ---------------------------------------------------------------------------
+
 
 class TestUnionFindIndexMapping:
     """
@@ -119,21 +116,18 @@ class TestUnionFindIndexMapping:
         ]
         cfg = MultiPageConfig()
         results = merge_multipage_tables(metas, cfg)
-        assert len(results) == 2, (
-            "Pass 2 must not merge across unextracted indices 1..3"
-        )
+        assert len(results) == 2, "Pass 2 must not merge across unextracted indices 1..3"
 
 
 # ---------------------------------------------------------------------------
 # Bug 3: Orphan-merge anchor picks wrong header source
 # ---------------------------------------------------------------------------
 
+
 class TestOrphanAnchorSelection:
     def test_header_orphan_used_as_anchor(self):
         """Header orphan should anchor, not data fragment."""
-        data_df = pd.DataFrame(
-            {"Column_0": ["100"], "Column_1": ["200"], "Column_2": ["300"]}
-        )
+        data_df = pd.DataFrame({"Column_0": ["100"], "Column_1": ["200"], "Column_2": ["300"]})
         header_df = pd.DataFrame(columns=["Name", "Value", "Status"])
 
         metas = [
@@ -152,6 +146,7 @@ class TestOrphanAnchorSelection:
 # ---------------------------------------------------------------------------
 # Bug 4: Unused config options (require_same_width, header_sim_loose)
 # ---------------------------------------------------------------------------
+
 
 class TestRequireSameWidth:
     def test_blocks_different_width_merge(self):
@@ -292,6 +287,7 @@ class TestHeaderSimLoose:
 # Utility function tests
 # ---------------------------------------------------------------------------
 
+
 class TestUtilities:
     def test_jaccard_identical(self):
         assert jaccard({"a", "b"}, {"a", "b"}) == 1.0
@@ -375,6 +371,7 @@ class TestUnionFind:
 # ---------------------------------------------------------------------------
 # Merge decision signal tests (inspired by debug_merger.py pairwise analysis)
 # ---------------------------------------------------------------------------
+
 
 class TestMergeDecisionSignals:
     """
@@ -519,40 +516,52 @@ class TestMergeDecisionSignals:
 # that content is treated as continuation of the previous row and folded in.
 # ---------------------------------------------------------------------------
 
-class TestStitchSplitCells:
 
+class TestStitchSplitCells:
     def test_single_nonempty_cell_folds_into_previous_row(self):
-        df = pd.DataFrame([
-            ["A-1", "Alpha", "first line"],
-            ["", "", "second line"],  # only col 2 populated → continuation
-        ], columns=["ID", "Name", "Notes"])
+        df = pd.DataFrame(
+            [
+                ["A-1", "Alpha", "first line"],
+                ["", "", "second line"],  # only col 2 populated → continuation
+            ],
+            columns=["ID", "Name", "Notes"],
+        )
         out = stitch_split_cells(df)
         assert out.shape == (1, 3)
         assert out.iloc[0, 2] == "first line\nsecond line"
 
     def test_two_consecutive_continuation_rows_both_fold(self):
-        df = pd.DataFrame([
-            ["A-1", "Alpha", "line1"],
-            ["", "", "line2"],
-            ["", "", "line3"],
-        ], columns=["ID", "Name", "Notes"])
+        df = pd.DataFrame(
+            [
+                ["A-1", "Alpha", "line1"],
+                ["", "", "line2"],
+                ["", "", "line3"],
+            ],
+            columns=["ID", "Name", "Notes"],
+        )
         out = stitch_split_cells(df)
         assert out.shape == (1, 3)
         assert out.iloc[0, 2] == "line1\nline2\nline3"
 
     def test_custom_separator_is_respected(self):
-        df = pd.DataFrame([
-            ["A-1", "Alpha", "first"],
-            ["", "", "second"],
-        ], columns=["ID", "Name", "Notes"])
+        df = pd.DataFrame(
+            [
+                ["A-1", "Alpha", "first"],
+                ["", "", "second"],
+            ],
+            columns=["ID", "Name", "Notes"],
+        )
         out = stitch_split_cells(df, separator=" | ")
         assert out.iloc[0, 2] == "first | second"
 
     def test_row_with_two_nonempty_cells_is_not_folded(self):
-        df = pd.DataFrame([
-            ["A-1", "Alpha", "first"],
-            ["A-2", "", "second"],  # 2 non-empty cells → not a continuation
-        ], columns=["ID", "Name", "Notes"])
+        df = pd.DataFrame(
+            [
+                ["A-1", "Alpha", "first"],
+                ["A-2", "", "second"],  # 2 non-empty cells → not a continuation
+            ],
+            columns=["ID", "Name", "Notes"],
+        )
         out = stitch_split_cells(df)
         assert out.shape == (2, 3)
 
@@ -571,19 +580,25 @@ class TestStitchSplitCells:
         # When the continuation cell contains a URL and there's a column
         # named for links/refs, the URL lands there even if it originally
         # appeared under a different column.
-        df = pd.DataFrame([
-            ["A-1", "Alpha", "prev-link"],
-            ["", "https://example.com/continuation", ""],
-        ], columns=["ID", "Name", "Link"])
+        df = pd.DataFrame(
+            [
+                ["A-1", "Alpha", "prev-link"],
+                ["", "https://example.com/continuation", ""],
+            ],
+            columns=["ID", "Name", "Link"],
+        )
         out = stitch_split_cells(df)
         assert out.shape == (1, 3)
         assert "https://example.com/continuation" in out.iloc[0, 2]
 
     def test_continuation_into_empty_previous_cell(self):
-        df = pd.DataFrame([
-            ["A-1", "Alpha", ""],        # previous row's Notes is empty
-            ["", "", "continuation"],
-        ], columns=["ID", "Name", "Notes"])
+        df = pd.DataFrame(
+            [
+                ["A-1", "Alpha", ""],  # previous row's Notes is empty
+                ["", "", "continuation"],
+            ],
+            columns=["ID", "Name", "Notes"],
+        )
         out = stitch_split_cells(df)
         assert out.shape == (1, 3)
         assert out.iloc[0, 2] == "continuation"
@@ -601,7 +616,7 @@ class TestStitchSplitCells:
         df = pd.DataFrame(
             [
                 ["A-1", "$100", "$200", "first"],
-                ["",    "",     "",     "second line"],   # single continuation
+                ["", "", "", "second line"],  # single continuation
             ],
             columns=["ID", "Amount", "Amount", "Notes"],
         )

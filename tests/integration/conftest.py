@@ -11,6 +11,7 @@ and each converted document are session-cached.
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -56,6 +57,64 @@ def _convert(pdf_path: Path, converter, cache: Dict[Path, Any]):
     if pdf_path not in cache:
         cache[pdf_path] = converter.convert(str(pdf_path)).document
     return cache[pdf_path]
+
+
+def _copy_doc(doc: Any) -> Any:
+    """Deep-copy a Docling document without assuming one exact Docling version."""
+    if hasattr(doc, "model_copy"):
+        return doc.model_copy(deep=True)
+    if hasattr(doc, "copy"):
+        return doc.copy(deep=True)
+    return copy.deepcopy(doc)
+
+
+def _ref_pointer(ref_obj: Any) -> str:
+    if hasattr(ref_obj, "ref"):
+        return ref_obj.ref
+    if hasattr(ref_obj, "cref"):
+        return ref_obj.cref
+    if hasattr(ref_obj, "model_dump"):
+        data = ref_obj.model_dump(by_alias=True)
+        return data.get("$ref", "")
+    if isinstance(ref_obj, dict):
+        return ref_obj.get("$ref", "")
+    return ""
+
+
+def _body_table_refs(doc: Any) -> List[str]:
+    refs: List[str] = []
+
+    def visit(node: Any):
+        for child_ref in getattr(node, "children", []) or []:
+            ptr = _ref_pointer(child_ref)
+            if ptr.startswith("#/tables/"):
+                refs.append(ptr)
+            elif ptr.startswith("#/groups/"):
+                try:
+                    group_idx = int(ptr.split("/")[-1])
+                    groups = getattr(doc, "groups", []) or []
+                    if group_idx < len(groups):
+                        visit(groups[group_idx])
+                except (ValueError, IndexError):
+                    continue
+
+    if getattr(doc, "body", None) is not None:
+        visit(doc.body)
+    return refs
+
+
+def _header_texts(table: Any) -> List[str]:
+    data = getattr(table, "data", None)
+    grid = getattr(data, "grid", None) if data else None
+    if not grid:
+        return []
+    header_texts: List[str] = []
+    for row in grid:
+        if row and any(getattr(c, "column_header", False) for c in row if c):
+            header_texts.extend(str(getattr(c, "text", "")) for c in row if c)
+        else:
+            break
+    return header_texts
 
 
 # ---------------------------------------------------------------------------
@@ -155,4 +214,70 @@ def assert_stitched_matches(pdf_path: Path, expected_path: Path, converter, cach
             exp_last = [str(v) for v in exp["last_row"]]
             assert actual_last == exp_last, (
                 f"{ctx}: last_row {actual_last} != {exp_last}"
+            )
+
+
+def assert_public_stitch_injects_docling_doc(
+    pdf_path: Path,
+    expected_path: Path,
+    converter,
+    cache,
+) -> None:
+    """
+    Run the public stitch_tables() API and assert the resulting DoclingDocument
+    reflects the expected merged tables, not just the parser-neutral DataFrames.
+    """
+    from table_stitcher import MultiPageConfig, stitch_tables
+
+    spec = yaml.safe_load(expected_path.read_text())
+    cfg = MultiPageConfig(**(spec.get("config") or {}))
+    merged_specs = [
+        exp for exp in spec["logical_tables"]
+        if len(exp.get("members", [])) > 1
+    ]
+    if not merged_specs:
+        pytest.skip("fixture has no merged logical tables to inject")
+
+    original_doc = _convert(pdf_path, converter, cache)
+    doc = _copy_doc(original_doc)
+    original_headers = {
+        exp["members"][0]: _header_texts(doc.tables[exp["members"][0]])
+        for exp in merged_specs
+    }
+
+    stitched = stitch_tables(doc, config=cfg, raise_on_error=True)
+    body_refs = set(_body_table_refs(stitched))
+
+    for exp in merged_specs:
+        members = exp["members"]
+        anchor_idx = members[0]
+        anchor = stitched.tables[anchor_idx]
+        ctx = f"public stitch for members={members}, pages={exp['pages']}"
+
+        assert getattr(anchor.data, "num_rows", 0) > 0, f"{ctx}: anchor has no data"
+        if "shape" in exp:
+            # +1 or more for header rows; this guards that merged data was injected.
+            assert anchor.data.num_rows >= exp["shape"][0] + 1, (
+                f"{ctx}: anchor rows {anchor.data.num_rows} do not contain merged body"
+            )
+
+        if original_headers[anchor_idx]:
+            assert _header_texts(anchor)[:len(original_headers[anchor_idx])] == (
+                original_headers[anchor_idx]
+            ), f"{ctx}: anchor header text was not preserved"
+
+        for satellite_idx in members[1:]:
+            satellite = stitched.tables[satellite_idx]
+            satellite_ref = f"#/tables/{satellite_idx}"
+            assert satellite_ref not in body_refs, (
+                f"{ctx}: satellite ref {satellite_ref} still appears in body tree"
+            )
+            assert satellite.data.num_rows == 0, (
+                f"{ctx}: satellite {satellite_idx} data was not cleared"
+            )
+            assert satellite.data.num_cols == 0, (
+                f"{ctx}: satellite {satellite_idx} columns were not cleared"
+            )
+            assert satellite.prov == [], (
+                f"{ctx}: satellite {satellite_idx} provenance was not cleared"
             )

@@ -4,6 +4,7 @@ Docling adapter for table-stitcher.
 Reads tables from a DoclingDocument and writes merged results back.
 """
 
+import copy
 import re
 import logging
 from typing import Any, List, Set, Optional, Tuple
@@ -572,98 +573,137 @@ class DoclingAdapter:
 
         Only modifies tables that were actually merged (multiple fragments).
         Single-page tables retain their original Docling structure.
+        If injection fails, fields modified by this adapter are restored before
+        the exception is re-raised so callers using ``raise_on_error=False`` do
+        not receive a half-stitched document.
         """
         log.info("Starting DoclingDocument injection...")
 
         refs_to_remove: Set[str] = set()
+        table_snapshots = {
+            idx: {
+                "data": getattr(table, "data", None),
+                "prov": copy.copy(getattr(table, "prov", None)),
+            }
+            for idx, table in enumerate(doc.tables)
+        }
+        body_children_snapshot = (
+            list(doc.body.children)
+            if getattr(doc, "body", None) is not None and hasattr(doc.body, "children")
+            else None
+        )
+        group_children_snapshots = {
+            idx: list(group.children)
+            for idx, group in enumerate(getattr(doc, "groups", []) or [])
+            if hasattr(group, "children")
+        }
 
-        for lt in logical_tables:
-            if not lt.members:
-                continue
+        def restore_snapshots():
+            for idx, snap in table_snapshots.items():
+                if idx >= len(doc.tables):
+                    continue
+                doc.tables[idx].data = snap["data"]
+                doc.tables[idx].prov = copy.copy(snap["prov"])
 
-            if len(lt.members) == 1:
-                log.debug(f"Skipping single-table {lt.members[0]} - preserving original structure")
-                continue
+            if body_children_snapshot is not None:
+                doc.body.children = list(body_children_snapshot)
 
-            anchor_idx = lt.members[0]
-            anchor_table = doc.tables[anchor_idx]
+            for idx, children in group_children_snapshots.items():
+                groups = getattr(doc, "groups", []) or []
+                if idx < len(groups) and hasattr(groups[idx], "children"):
+                    groups[idx].children = list(children)
 
-            log.info(f"Injecting Logical Table {lt.logical_index} into Anchor Table {anchor_idx} "
-                     f"(merged from {len(lt.members)} fragments)")
+        try:
+            for lt in logical_tables:
+                if not lt.members:
+                    continue
 
-            original_data = getattr(anchor_table, 'data', None)
+                if len(lt.members) == 1:
+                    log.debug(f"Skipping single-table {lt.members[0]} - preserving original structure")
+                    continue
 
-            anchor_table.data = _dataframe_to_docling_data(
-                lt.df,
-                original_data=original_data,
-            )
+                anchor_idx = lt.members[0]
+                anchor_table = doc.tables[anchor_idx]
 
-            for satellite_idx in lt.members[1:]:
-                satellite_table = doc.tables[satellite_idx]
+                log.info(f"Injecting Logical Table {lt.logical_index} into Anchor Table {anchor_idx} "
+                         f"(merged from {len(lt.members)} fragments)")
 
-                if satellite_table.prov:
-                    if anchor_table.prov is None:
-                        anchor_table.prov = []
+                original_data = getattr(anchor_table, 'data', None)
 
-                    if isinstance(satellite_table.prov, list):
-                        if isinstance(anchor_table.prov, list):
-                            anchor_table.prov.extend(satellite_table.prov)
-                        else:
-                            anchor_table.prov = [anchor_table.prov] + satellite_table.prov
-                    else:
-                        if isinstance(anchor_table.prov, list):
-                            anchor_table.prov.append(satellite_table.prov)
-                        else:
-                            anchor_table.prov = [anchor_table.prov, satellite_table.prov]
-
-                refs_to_remove.add(satellite_table.self_ref)
-
-                # Clear the satellite in place so downstream code iterating
-                # doc.tables directly doesn't see stale fragment content.
-                # We don't pop the entry because self_refs are position-based
-                # (`#/tables/N` = list index N) — removing an element would
-                # shift every subsequent self_ref and body reference. The
-                # satellite becomes an empty shell, still present but
-                # without data or prov.
-                satellite_table.data = TableData(
-                    num_rows=0, num_cols=0, table_cells=[], grid=[]
+                anchor_table.data = _dataframe_to_docling_data(
+                    lt.df,
+                    original_data=original_data,
                 )
-                satellite_table.prov = []
 
-        # Prune satellite references from body hierarchy
-        removed_count = 0
+                for satellite_idx in lt.members[1:]:
+                    satellite_table = doc.tables[satellite_idx]
 
-        def traverse_and_prune(group_node: Any):
-            nonlocal removed_count
-            if not hasattr(group_node, 'children'):
-                return
+                    if satellite_table.prov:
+                        if anchor_table.prov is None:
+                            anchor_table.prov = []
 
-            new_children = []
-            for child_ref in group_node.children:
-                ptr = _get_ref_pointer(child_ref)
+                        if isinstance(satellite_table.prov, list):
+                            if isinstance(anchor_table.prov, list):
+                                anchor_table.prov.extend(satellite_table.prov)
+                            else:
+                                anchor_table.prov = [anchor_table.prov] + satellite_table.prov
+                        else:
+                            if isinstance(anchor_table.prov, list):
+                                anchor_table.prov.append(satellite_table.prov)
+                            else:
+                                anchor_table.prov = [anchor_table.prov, satellite_table.prov]
 
-                if not ptr:
+                    refs_to_remove.add(satellite_table.self_ref)
+
+                    # Clear the satellite in place so downstream code iterating
+                    # doc.tables directly doesn't see stale fragment content.
+                    # We don't pop the entry because self_refs are position-based
+                    # (`#/tables/N` = list index N) — removing an element would
+                    # shift every subsequent self_ref and body reference. The
+                    # satellite becomes an empty shell, still present but
+                    # without data or prov.
+                    satellite_table.data = TableData(
+                        num_rows=0, num_cols=0, table_cells=[], grid=[]
+                    )
+                    satellite_table.prov = []
+
+            # Prune satellite references from body hierarchy
+            removed_count = 0
+
+            def traverse_and_prune(group_node: Any):
+                nonlocal removed_count
+                if not hasattr(group_node, 'children'):
+                    return
+
+                new_children = []
+                for child_ref in group_node.children:
+                    ptr = _get_ref_pointer(child_ref)
+
+                    if not ptr:
+                        new_children.append(child_ref)
+                        continue
+
+                    if ptr in refs_to_remove:
+                        removed_count += 1
+                        continue
+
                     new_children.append(child_ref)
-                    continue
 
-                if ptr in refs_to_remove:
-                    removed_count += 1
-                    continue
+                    if ptr.startswith("#/groups/"):
+                        try:
+                            group_idx = int(ptr.split("/")[-1])
+                            if group_idx < len(doc.groups):
+                                traverse_and_prune(doc.groups[group_idx])
+                        except (ValueError, IndexError):
+                            pass
 
-                new_children.append(child_ref)
+                group_node.children = new_children
 
-                if ptr.startswith("#/groups/"):
-                    try:
-                        group_idx = int(ptr.split("/")[-1])
-                        if group_idx < len(doc.groups):
-                            traverse_and_prune(doc.groups[group_idx])
-                    except (ValueError, IndexError):
-                        pass
-
-            group_node.children = new_children
-
-        if doc.body:
-            traverse_and_prune(doc.body)
+            if doc.body:
+                traverse_and_prune(doc.body)
+        except Exception:
+            restore_snapshots()
+            raise
 
         log.info(f"Injection complete. Pruned {removed_count} satellite table references.")
         return doc

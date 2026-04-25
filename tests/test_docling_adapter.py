@@ -388,6 +388,49 @@ class TestInjection:
         # Unrelated table untouched.
         assert doc.tables[2].data is not None
 
+    def test_injection_failure_restores_partial_mutations(self, monkeypatch):
+        """
+        If injection fails after mutating an earlier logical table, the adapter
+        must restore the table data/provenance and body references it touched.
+        """
+        import table_stitcher.adapters.docling as docling_adapter
+
+        doc = _build_doc_with_tables(4)
+        original_data = [t.data for t in doc.tables]
+        original_body_children = list(doc.body.children)
+
+        calls = {"count": 0}
+        real_convert = docling_adapter._dataframe_to_docling_data
+
+        def fail_on_second_conversion(*args, **kwargs):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise RuntimeError("synthetic injection failure")
+            return real_convert(*args, **kwargs)
+
+        monkeypatch.setattr(
+            docling_adapter,
+            "_dataframe_to_docling_data",
+            fail_on_second_conversion,
+        )
+
+        logical_tables = [
+            LogicalTable(0, [0, 1], [1, 2], pd.DataFrame({"A": ["first"]})),
+            LogicalTable(1, [2, 3], [3, 4], pd.DataFrame({"B": ["second"]})),
+        ]
+
+        with pytest.raises(RuntimeError, match="synthetic injection failure"):
+            DoclingAdapter().inject(doc, logical_tables)
+
+        assert [t.data for t in doc.tables] == original_data
+        assert list(doc.body.children) == original_body_children
+        assert [c.cref for c in doc.body.children] == [
+            "#/tables/0",
+            "#/tables/1",
+            "#/tables/2",
+            "#/tables/3",
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Pass-through guarantee tests

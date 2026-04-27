@@ -247,6 +247,75 @@ class TestMergeTrace:
         assert trace.signals["width_diff"] == 0
 
 
+class TestHeaderSimStrictDisjointTokens:
+    """
+    Reported in #5: two parallel clinical-study tables with headers
+    {patient, age, sex, stage, drug} and {patient, age, sex, stage, dose}
+    have Jaccard 0.67 — above strict (0.6) — but each side carries its own
+    unique token. That's the structural signature of parallel tables in a
+    shared domain, not a continuation; it must not auto-merge.
+    """
+
+    def test_disjoint_tokens_blocks_strict_merge_without_layout(self):
+        df_a = pd.DataFrame(
+            {"Patient": [1], "Age": [2], "Sex": [3], "Stage": [4], "Drug": [5]}
+        )
+        df_b = pd.DataFrame(
+            {"Patient": [6], "Age": [7], "Sex": [8], "Stage": [9], "Dose": [10]}
+        )
+        metas = [
+            _make_meta(idx=0, df=df_a, start_page=1),
+            _make_meta(idx=1, df=df_b, start_page=2),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 2
+        # The trace should record the structural reason, not "header_similarity_strict".
+        assert all(lt.merge_reason != "header_similarity_strict" for lt in results)
+
+    def test_disjoint_tokens_with_layout_still_merges(self):
+        # When layout corroborates (tA at bottom, tB at top), the same shared-
+        # vocabulary pair IS a legitimate continuation and should merge via
+        # the loose+layout path.
+        df_a = pd.DataFrame(
+            {"Patient": [1], "Age": [2], "Sex": [3], "Stage": [4], "Drug": [5]}
+        )
+        df_b = pd.DataFrame(
+            {"Patient": [6], "Age": [7], "Sex": [8], "Stage": [9], "Dose": [10]}
+        )
+        metas = [
+            _make_meta(idx=0, df=df_a, start_page=1, vert_bottom=0.95),
+            _make_meta(idx=1, df=df_b, start_page=2, vert_top=0.05),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+
+    def test_subset_headers_still_strict_merge(self):
+        # Parser-noise continuation: tB's tokens ⊆ tA's (parser dropped a
+        # column on page 2). The new guard must NOT block this.
+        df_a = pd.DataFrame(
+            {"Customer": [1], "Name": [2], "Total": [3], "Date": [4]}
+        )
+        df_b = pd.DataFrame({"Customer": [5], "Total": [6], "Date": [7]})
+        metas = [
+            _make_meta(idx=0, df=df_a, start_page=1),
+            _make_meta(idx=1, df=df_b, start_page=2),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].merge_reason == "header_similarity_strict"
+
+    def test_identical_headers_still_strict_merge(self):
+        df_a = pd.DataFrame({"Customer": [1], "Total": [2], "Date": [3]})
+        df_b = pd.DataFrame({"Customer": [4], "Total": [5], "Date": [6]})
+        metas = [
+            _make_meta(idx=0, df=df_a, start_page=1),
+            _make_meta(idx=1, df=df_b, start_page=2),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].merge_reason == "header_similarity_strict"
+
+
 class TestHeaderSimLoose:
     def test_loose_with_layout_merges(self):
         df_a = pd.DataFrame({"Name": [1], "Status": [2], "Extra": [3]})

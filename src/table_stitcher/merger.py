@@ -286,6 +286,24 @@ def layout_suggests_continuation(tA: TableMeta, tB: TableMeta, cfg: MultiPageCon
     return a_near_bottom and b_near_top
 
 
+def _both_have_unique_header_tokens(tA: TableMeta, tB: TableMeta) -> bool:
+    """
+    True when each side's header set has at least one token the other lacks.
+
+    This is the structural signature of *parallel* tables sharing domain
+    vocabulary (e.g. clinical studies that share patient/age/sex but differ
+    on outcome column), not of a single table split across pages. A real
+    continuation has either identical headers or tB ⊆ tA — parsers may
+    drop columns on page 2 but cannot invent header tokens that weren't on
+    page 1. So when both sides bring their own tokens, header similarity
+    alone is unsafe; we require layout corroboration before merging.
+    """
+    a, b = tA.header_tokens, tB.header_tokens
+    if not a or not b:
+        return False
+    return bool(a - b) and bool(b - a)
+
+
 def should_force_orphan_merge(h: TableMeta, d: TableMeta, cfg: MultiPageConfig) -> tuple[bool, str]:
     """Check if header orphan + data orphan should merge."""
     if h.start_page is None or d.start_page is None:
@@ -716,9 +734,17 @@ def _classify_sequential_pair(
 
     # --- Repeated-header continuation ---
     header_sim = jaccard(tA.header_tokens, tB.header_tokens)
+    layout = layout_suggests_continuation(tA, tB, cfg)
+
     if header_sim >= cfg.header_sim_strict:
+        # Strict path normally trusts similarity alone. But when both sides
+        # carry unique tokens, we're seeing parallel tables sharing domain
+        # vocabulary (clinical studies, quarterly reports) — a continuation
+        # would have identical headers or tB ⊆ tA. Demand layout in that case.
+        if _both_have_unique_header_tokens(tA, tB) and not layout:
+            return False, "header_similarity_strict_disjoint_tokens", False, []
         return True, "header_similarity_strict", False, []
-    if header_sim >= cfg.header_sim_loose and layout_suggests_continuation(tA, tB, cfg):
+    if header_sim >= cfg.header_sim_loose and layout:
         return True, "header_similarity_loose_layout", False, []
     return False, "header_similarity_too_low", False, []
 

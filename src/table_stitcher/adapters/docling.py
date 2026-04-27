@@ -73,6 +73,71 @@ def _looks_like_data(cell: str) -> bool:
     return any(p.search(s) for p in _DATA_PATTERNS)
 
 
+def _data_subshape(cell: str) -> Optional[str]:
+    """
+    Subcategory within "data-shaped". None if the cell isn't data-shaped.
+    Lets us tell whether row 1 and the body share the same flavour of data —
+    used to recover headers like ``[2020, 2021, 2022, 2023]`` whose cells
+    individually match a data pattern but whose row uniformly contrasts
+    with the body's shape.
+    """
+    s = str(cell).strip()
+    if not s or not _looks_like_data(s):
+        return None
+    if re.match(r"^https?://", s, re.IGNORECASE):
+        return "url"
+    if s.startswith("$"):
+        return "currency"
+    if s.endswith("%"):
+        return "percent"
+    if re.match(r"^\d{1,2}[/-]\d{1,2}", s):
+        return "date_like"
+    if re.match(r"^\d+$", s):
+        return "bare_int"
+    if re.match(r"^[\d,]+$", s):
+        return "grouped_int"
+    if re.match(r"^\d+\.\d+$", s) or re.match(r"^[\d,]+\.\d+$", s):
+        return "float"
+    return "other_data"
+
+
+def _first_row_is_header_by_contrast(rows: list[list[str]]) -> bool:
+    """
+    True when row 1 is uniformly one data subshape but the body rows are
+    consistently a different subshape — meaning row 1 is a column-axis label
+    (years, ordinals) rather than data, even though its cells individually
+    match data patterns.
+
+    Universal structural rule: a header row is structurally distinct from
+    the body. We only assert it when the contrast is unambiguous — row 1
+    has one shape, body has a different one — to avoid promoting genuine
+    data rows (e.g. lottery numbers, IDs) where row 1 and body share shape.
+    """
+    if len(rows) < 2:
+        return False
+
+    r1_cells = [str(c).strip() for c in rows[0] if str(c).strip()]
+    if len(r1_cells) < 2:
+        return False
+
+    r1_shapes = {_data_subshape(c) for c in r1_cells}
+    if None in r1_shapes or len(r1_shapes) != 1:
+        return False
+    r1_shape = next(iter(r1_shapes))
+
+    body_shapes: list[Optional[str]] = []
+    for row in rows[1:3]:
+        for c in row:
+            s = str(c).strip()
+            if s:
+                body_shapes.append(_data_subshape(s))
+    if not body_shapes:
+        return False
+
+    different = sum(1 for s in body_shapes if s != r1_shape)
+    return different / len(body_shapes) >= 0.6
+
+
 def _is_header_shaped_cell(cell: str) -> bool:
     """True if cell is plausibly a header cell — short, not data, not auto-label."""
     s = str(cell).strip()
@@ -111,10 +176,14 @@ def _detect_header_orphan(df: pd.DataFrame, is_headerless: bool, max_orphan_rows
     if not meaningful:
         return False
 
-    # Columns must not contain data patterns (numbers, currency, ranges).
-    # Length is NOT checked here — real headers can be long phrases.
+    # Columns must not contain data patterns (numbers, currency, ranges)
+    # — UNLESS the columns form a uniform data subshape (e.g. all years,
+    # all ordinals), which indicates a column-axis header rather than data.
     if any(_looks_like_data(c) for c in cols):
-        return False
+        non_empty_cols = [c for c in cols if c.strip()]
+        col_shapes = {_data_subshape(c) for c in non_empty_cols}
+        if None in col_shapes or len(col_shapes) != 1 or len(non_empty_cols) < 2:
+            return False
 
     # Data rows (if any) must be header-shaped: short, non-data, non-auto.
     # A long or data-shaped value in a data row means this fragment carries
@@ -241,6 +310,10 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
     # _looks_like_data and _is_header_shaped_cell to stay consistent with
     # structural orphan detection below.
     has_data_values = any(_looks_like_data(c) for c in first_row)
+    # A uniformly data-shaped row 1 contradicted by a different-shaped body
+    # is a column-axis header (years, ordinals), not data.
+    if has_data_values and _first_row_is_header_by_contrast(real_content_rows):
+        has_data_values = False
     has_url = any("http" in str(c).lower() for c in first_row)
 
     non_empty_vals = [str(c).strip().upper() for c in first_row if str(c).strip()]

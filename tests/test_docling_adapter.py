@@ -12,6 +12,7 @@ from table_stitcher.adapters.base import TableStitcherAdapter
 from table_stitcher.adapters.docling import (
     DoclingAdapter,
     _dataframe_to_docling_data,
+    _detect_header_orphan,
     _grid_to_dataframe,
 )
 from table_stitcher.models import LogicalTable
@@ -701,3 +702,56 @@ class TestHeaderlessDetection:
         df = _grid_to_dataframe(table, doc=None)
         assert df.attrs["is_headerless"] is False
         assert list(df.columns) == ["Contribution Type", "Investment Name", "Total"]
+
+    def test_year_columns_promoted_to_header(self):
+        # Reported in #4: row 1 of bare 4-digit years contradicted by a
+        # currency-shaped body row → row 1 is a column-axis header, not data.
+        table = _mk_table(
+            [
+                ["2020", "2021", "2022", "2023"],
+                ["$13,085", "$14,200", "$15,300", "$16,800"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is False
+        assert list(df.columns) == ["2020", "2021", "2022", "2023"]
+
+    def test_uniform_int_row_over_uniform_int_row_stays_headerless(self):
+        # Counter-example: lottery / ID rows. Row 1 and body share the same
+        # subshape (bare_int) → no contrast → must NOT be promoted to header.
+        table = _mk_table(
+            [
+                ["7", "13", "22", "41", "58"],
+                ["12", "19", "33", "47", "62"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+
+    def test_ordinal_int_columns_with_text_body(self):
+        # `[1, 2, 3, 4]` ordinal column labels over a text body → header.
+        table = _mk_table(
+            [
+                ["1", "2", "3", "4"],
+                ["red", "blue", "green", "yellow"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is False
+        assert list(df.columns) == ["1", "2", "3", "4"]
+
+
+class TestHeaderOrphanWithDataShapedColumns:
+    def test_year_only_fragment_detected_as_orphan(self):
+        # A standalone fragment of just `[2020, 2021, 2022, 2023]` (no body
+        # rows) is a header that the parser separated from its data — must
+        # still register as a header orphan despite the cells matching a
+        # data pattern, because the columns are uniformly one subshape.
+        df = pd.DataFrame(columns=["2020", "2021", "2022", "2023"])
+        assert _detect_header_orphan(df, is_headerless=False, max_orphan_rows=2) is True
+
+    def test_mixed_data_columns_not_an_orphan(self):
+        # Columns that mix subshapes (currency + bare int) are real data,
+        # not a uniform header axis.
+        df = pd.DataFrame(columns=["$1,000", "2020", "Notes"])
+        assert _detect_header_orphan(df, is_headerless=False, max_orphan_rows=2) is False

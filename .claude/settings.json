@@ -65,7 +65,12 @@
       "Bash(python3 -m pytest -q)",
       "Bash(python3 -m build --wheel --outdir /tmp/wheel-check)",
       "Bash(unzip -l /tmp/wheel-check/*.whl)",
-      "Bash(python3 -m pytest tests/test_public_api.py -v)"
+      "Bash(python3 -m pytest tests/test_public_api.py -v)",
+      "Bash(python3 -m pytest tests/:*)",
+      "Bash(python3 -m pytest tests:*)",
+      "Bash(PYTHONPATH=/Users/pebbleroad/Documents/table-stitcher/src python3 -m pytest tests/:*)",
+      "Bash(python3 -m pytest -q:*)",
+      "Bash(python3 -m pytest -m:*)"
     ]
   }
 }

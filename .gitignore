@@ -38,3 +38,7 @@ htmlcov/
 
 # Dataset cache (PubTables-v2 etc.)
 .temp/
+
+# Claude Code per-user overrides (settings.json itself is shared)
+.claude/settings.local.json
+

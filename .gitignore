@@ -41,4 +41,5 @@ htmlcov/
 
 # Claude Code per-user overrides (settings.json itself is shared)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 

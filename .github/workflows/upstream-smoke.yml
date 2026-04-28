@@ -32,7 +32,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: cache docling models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
           key: docling-models-${{ runner.os }}-v1

@@ -1,13 +1,16 @@
 """
-Shared machinery for integration tests: PDF → stitched DataFrames → compare
-against a YAML description of the expected merge.
+Shared machinery for integration tests: DoclingDocument → stitched DataFrames
+→ compare against a YAML description of the expected merge.
 
 Fixtures live under tests/integration/fixtures/<category>/<slug>.<provenance>.pdf
-paired with <slug>.<provenance>.expected.yaml. Tests discover and parametrize
-over every expected.yaml in the tree (see test_fixtures.py).
+paired with <slug>.<provenance>.expected.yaml and a <slug>.<provenance>.docling.json
+snapshot of the parsed DoclingDocument. Tests discover and parametrize over every
+expected.yaml in the tree (see test_fixtures.py).
 
-Docling conversion is expensive (model load + per-PDF parse), so the converter
-and each converted document are session-cached.
+By default, tests load the JSON snapshot — no PDF parsing, no OCR, no model
+downloads, deterministic across platforms. Pass `--live-parse` to instead
+re-run docling against the PDF (slow, OCR-engine-dependent; used by the
+nightly upstream-smoke workflow).
 """
 
 from __future__ import annotations
@@ -21,6 +24,20 @@ import pytest
 import yaml
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--live-parse",
+        action="store_true",
+        default=False,
+        help=(
+            "Run integration tests by re-parsing PDFs with docling instead of "
+            "loading committed *.docling.json snapshots. Slow, requires model "
+            "downloads, and OCR-engine-dependent — used by the nightly "
+            "upstream-smoke workflow. Comparisons run in lenient mode."
+        ),
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -42,8 +59,19 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="session")
-def docling_converter():
-    """One DocumentConverter per session — model load is expensive."""
+def live_parse(request) -> bool:
+    return bool(request.config.getoption("--live-parse"))
+
+
+@pytest.fixture(scope="session")
+def docling_converter(live_parse):
+    """
+    DocumentConverter, only instantiated under --live-parse. In snapshot mode
+    we never touch docling's model loaders, so the suite stays fast and
+    OCR-free on every platform.
+    """
+    if not live_parse:
+        return None
     from docling.document_converter import DocumentConverter
 
     return DocumentConverter()
@@ -51,15 +79,44 @@ def docling_converter():
 
 @pytest.fixture(scope="session")
 def doc_cache() -> dict[Path, Any]:
-    """Cache converted DoclingDocuments by PDF path within a session."""
+    """Cache loaded DoclingDocuments by source path within a session."""
     return {}
 
 
-def _convert(pdf_path: Path, converter, cache: dict[Path, Any]):
+def _snapshot_path_for(pdf_path: Path) -> Path:
+    return pdf_path.parent / (pdf_path.name[: -len(".pdf")] + ".docling.json")
+
+
+def _load_snapshot(pdf_path: Path, cache: dict[Path, Any]):
+    snap = _snapshot_path_for(pdf_path).resolve()
+    if snap in cache:
+        return cache[snap]
+    if not snap.exists():
+        raise FileNotFoundError(
+            f"Missing docling snapshot: {snap}\n"
+            f"Regenerate with: python -m scripts.regenerate_docling_snapshots {pdf_path}"
+        )
+    from docling_core.types.doc import DoclingDocument
+
+    cache[snap] = DoclingDocument.model_validate_json(snap.read_text())
+    return cache[snap]
+
+
+def _convert_live(pdf_path: Path, converter, cache: dict[Path, Any]):
     pdf_path = pdf_path.resolve()
-    if pdf_path not in cache:
-        cache[pdf_path] = converter.convert(str(pdf_path)).document
+    if pdf_path in cache:
+        return cache[pdf_path]
+    cache[pdf_path] = converter.convert(str(pdf_path)).document
     return cache[pdf_path]
+
+
+def load_doc(pdf_path: Path, converter, cache: dict[Path, Any], live: bool):
+    """Return a DoclingDocument for a fixture PDF, snapshot or live-parsed."""
+    if live:
+        if converter is None:
+            raise RuntimeError("live=True but no DocumentConverter available")
+        return _convert_live(pdf_path, converter, cache)
+    return _load_snapshot(pdf_path, cache)
 
 
 def _copy_doc(doc: Any) -> Any:
@@ -161,8 +218,23 @@ def _normalize_cell(v: Any) -> str:
     return str(v)
 
 
-def assert_stitched_matches(pdf_path: Path, expected_path: Path, converter, cache) -> None:
-    """Run the pipeline on pdf_path and assert the merge matches expected.yaml."""
+def assert_stitched_matches(
+    pdf_path: Path,
+    expected_path: Path,
+    converter,
+    cache,
+    *,
+    live: bool = False,
+) -> None:
+    """
+    Run the pipeline on the document for pdf_path and assert the merge matches
+    expected.yaml.
+
+    In snapshot mode (default) the comparison is strict: members, pages, shape,
+    columns, first_row, last_row must all match. In --live-parse mode only the
+    structural fields (members, pages, shape) are checked — cell text is OCR-
+    engine-dependent and therefore not portable across platforms.
+    """
     from table_stitcher import MultiPageConfig, extract_table_meta
     from table_stitcher.merger import merge_multipage_tables
 
@@ -170,7 +242,7 @@ def assert_stitched_matches(pdf_path: Path, expected_path: Path, converter, cach
     cfg_overrides = spec.get("config") or {}
     cfg = MultiPageConfig(**cfg_overrides)
 
-    doc = _convert(pdf_path, converter, cache)
+    doc = load_doc(pdf_path, converter, cache, live)
     metas = extract_table_meta(doc, config=cfg)
     logicals = merge_multipage_tables(metas, cfg)
 
@@ -200,6 +272,11 @@ def assert_stitched_matches(pdf_path: Path, expected_path: Path, converter, cach
                 f"{ctx}: shape {list(lt.df.shape)} != {exp['shape']}"
             )
 
+        if live:
+            # Cell-text checks are skipped in live mode — different OCR engines
+            # produce different spacing and typo profiles for the same PDF.
+            continue
+
         if "columns" in exp:
             actual_cols = [str(c) for c in lt.df.columns]
             assert actual_cols == exp["columns"], (
@@ -222,10 +299,15 @@ def assert_public_stitch_injects_docling_doc(
     expected_path: Path,
     converter,
     cache,
+    *,
+    live: bool = False,
 ) -> None:
     """
     Run the public stitch_tables() API and assert the resulting DoclingDocument
     reflects the expected merged tables, not just the parser-neutral DataFrames.
+
+    The header-text equality check is self-consistent (compares pre- vs.
+    post-stitch headers from the same parse), so it stays strict in both modes.
     """
     from table_stitcher import MultiPageConfig, stitch_tables
 
@@ -235,7 +317,7 @@ def assert_public_stitch_injects_docling_doc(
     if not merged_specs:
         pytest.skip("fixture has no merged logical tables to inject")
 
-    original_doc = _convert(pdf_path, converter, cache)
+    original_doc = load_doc(pdf_path, converter, cache, live)
     doc = _copy_doc(original_doc)
     original_headers = {
         exp["members"][0]: _header_texts(doc.tables[exp["members"][0]]) for exp in merged_specs

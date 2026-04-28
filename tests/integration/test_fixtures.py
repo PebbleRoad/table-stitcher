@@ -33,17 +33,22 @@ def _params():
 
 
 @pytest.mark.parametrize("case", list(_params()))
-def test_fixture_stitches_as_expected(case: FixtureCase, docling_converter, doc_cache) -> None:
-    assert_stitched_matches(case.pdf_path, case.yaml_path, docling_converter, doc_cache)
+def test_fixture_stitches_as_expected(
+    case: FixtureCase, docling_converter, doc_cache, live_parse
+) -> None:
+    assert_stitched_matches(
+        case.pdf_path, case.yaml_path, docling_converter, doc_cache, live=live_parse
+    )
 
 
 @pytest.mark.parametrize("case", list(_params()))
 def test_public_stitch_tables_injects_expected_docling_shape(
-    case: FixtureCase, docling_converter, doc_cache
+    case: FixtureCase, docling_converter, doc_cache, live_parse
 ) -> None:
     assert_public_stitch_injects_docling_doc(
         case.pdf_path,
         case.yaml_path,
         docling_converter,
         doc_cache,
+        live=live_parse,
     )

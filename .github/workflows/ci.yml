@@ -53,9 +53,11 @@ jobs:
         run: pytest tests/ -v
 
   integration:
-    # Slow layer. Docling downloads layout / table-structure / OCR models on
-    # first run (~2 min); we cache ~/.cache/huggingface so repeat runs stay
-    # under ~4 min including the actual assertions.
+    # Snapshot lane: tests load committed *.docling.json fixtures and run
+    # table-stitcher against them. No PDF parsing, no OCR, no model downloads
+    # — deterministic across platforms regardless of which OCR engine docling
+    # would auto-select. The full live-parse pipeline is exercised separately
+    # by .github/workflows/upstream-smoke.yml on a nightly schedule.
     name: integration
     runs-on: ubuntu-latest
     steps:
@@ -64,18 +66,14 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: cache docling models
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface
-          key: docling-models-${{ runner.os }}-v1
       - name: install
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: integration tests
+      - name: integration tests (snapshot lane)
         # Integration tests are gated behind the `integration` marker in
-        # pyproject; opt in explicitly here.
+        # pyproject; opt in explicitly here. The snapshot lane is the default
+        # — no --live-parse flag.
         run: pytest -m integration tests/ -v
 
   build:

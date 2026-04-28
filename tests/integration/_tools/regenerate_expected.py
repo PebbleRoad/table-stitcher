@@ -1,6 +1,7 @@
 """
 Regenerate a fixture's expected.yaml by running the current pipeline against
-its PDF and capturing the output.
+its DoclingDocument snapshot (or live-parsed PDF, with --live-parse) and
+capturing the output.
 
 Usage (from repo root):
     python -m tests.integration._tools.regenerate_expected \\
@@ -13,6 +14,9 @@ Optional flags:
                           Omit to leave xfail unset (or to clear an existing one
                           on a now-passing case, pair with --clear-xfail).
     --clear-xfail         Remove any existing xfail marker.
+    --live-parse          Re-parse the PDF with docling instead of loading the
+                          *.docling.json snapshot. Use when you've changed the
+                          snapshot itself (then commit both side-by-side).
 
 Emits the regenerated YAML next to the PDF, preserving the `<slug>.<provenance>
 .expected.yaml` convention. The YAML captures: description, config (defaults
@@ -27,7 +31,6 @@ import sys
 from pathlib import Path
 
 import yaml
-from docling.document_converter import DocumentConverter
 
 from table_stitcher import MultiPageConfig, extract_table_meta
 from table_stitcher.merger import merge_multipage_tables
@@ -46,11 +49,30 @@ def _expected_path_for(pdf: Path) -> Path:
     return pdf.parent / (pdf.name[: -len(".pdf")] + ".expected.yaml")
 
 
+def _load_doc(pdf_path: Path, live_parse: bool):
+    if live_parse:
+        from docling.document_converter import DocumentConverter
+
+        return DocumentConverter().convert(str(pdf_path)).document
+
+    snap = pdf_path.parent / (pdf_path.name[: -len(".pdf")] + ".docling.json")
+    if not snap.exists():
+        raise FileNotFoundError(
+            f"Missing docling snapshot: {snap}\n"
+            f"Generate it with: python -m scripts.regenerate_docling_snapshots {pdf_path}\n"
+            f"Or pass --live-parse to re-run docling against the PDF directly."
+        )
+    from docling_core.types.doc import DoclingDocument
+
+    return DoclingDocument.model_validate_json(snap.read_text())
+
+
 def regenerate(
     pdf_path: Path,
     description: str | None = None,
     xfail: str | None = None,
     clear_xfail: bool = False,
+    live_parse: bool = False,
 ) -> Path:
     if not pdf_path.is_file():
         raise FileNotFoundError(pdf_path)
@@ -79,7 +101,7 @@ def regenerate(
         effective_xfail = old_xfail
 
     cfg = MultiPageConfig()
-    doc = DocumentConverter().convert(str(pdf_path)).document
+    doc = _load_doc(pdf_path, live_parse)
     metas = extract_table_meta(doc, config=cfg)
     logicals = merge_multipage_tables(metas, cfg)
 
@@ -125,9 +147,20 @@ def main(argv=None) -> int:
     )
     p.add_argument("--xfail", type=str, default=None, help="Set/update the xfail marker")
     p.add_argument("--clear-xfail", action="store_true", help="Remove any existing xfail marker")
+    p.add_argument(
+        "--live-parse",
+        action="store_true",
+        help="Re-parse the PDF with docling instead of loading the snapshot",
+    )
     args = p.parse_args(argv)
 
-    out = regenerate(args.pdf, args.description, args.xfail, args.clear_xfail)
+    out = regenerate(
+        args.pdf,
+        args.description,
+        args.xfail,
+        args.clear_xfail,
+        live_parse=args.live_parse,
+    )
     try:
         display = out.relative_to(Path.cwd())
     except ValueError:

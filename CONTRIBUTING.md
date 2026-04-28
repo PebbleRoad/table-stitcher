@@ -19,8 +19,11 @@ The pre-commit hook calls the ruff installed by step 1 — local and CI
 share a single ruff version, so a green pre-commit run means a green CI
 lint job.
 
-First `pytest tests/` downloads docling's models (~2 min, goes to
-`~/.cache/huggingface/`). Subsequent runs are ~3 min for the full suite.
+The default `pytest tests/` run is unit-only and finishes in seconds. The
+integration suite (`pytest -m integration tests/`) runs the merger against
+committed `*.docling.json` snapshots — also fast, no model downloads. Only
+the opt-in live-parse lane (see below) hits docling and downloads its models
+on first run.
 
 ## Code style and linting
 
@@ -87,7 +90,18 @@ should produce.
    merge rule the fixture primarily exercises (`repeated-header/`,
    `headerless-continuation/`, `width-drift/`, `orphan-pair/`, …).
 
-2. **Generate `expected.yaml`** from the current pipeline:
+2. **Generate the docling snapshot.** Tests load this JSON instead of
+   re-parsing the PDF, so OCR is taken out of the test loop entirely:
+
+   ```bash
+   python -m scripts.regenerate_docling_snapshots \
+       tests/integration/fixtures/<category>/<slug>.<provenance>.pdf
+   ```
+
+   This writes `<slug>.<provenance>.docling.json` next to the PDF. Commit
+   it together with the PDF and YAML.
+
+3. **Generate `expected.yaml`** from the snapshot:
 
    ```bash
    python -m tests.integration._tools.regenerate_expected \
@@ -95,7 +109,7 @@ should produce.
        --description "One-paragraph description of what makes this fixture interesting."
    ```
 
-   The tool runs docling + the merger and captures the resulting
+   The tool reads the snapshot and runs the merger to capture the resulting
    `LogicalTable` list into the sibling YAML.
 
 3. **Eyeball the output.** Open the generated YAML — does the merge outcome
@@ -107,7 +121,11 @@ should produce.
    - Does `first_row` / `last_row` match the visible first and last data
      rows of the merged table?
 
-4. **If the outcome is wrong, decide whether the fixture is exercising a
+4. **Do steps 2-3 in lockstep.** The YAML's `first_row` / `last_row` /
+   `columns` encode cell text from the snapshot, so if you regenerate the
+   snapshot, regenerate the YAML too — and commit them in the same PR.
+
+5. **If the outcome is wrong, decide whether the fixture is exercising a
    known bug.** If so, re-run with an `--xfail` reason:
 
    ```bash
@@ -122,20 +140,21 @@ should produce.
    test will XPASS-fail, forcing the fixer to regenerate the YAML with
    `--clear-xfail`.
 
-5. **Run the suite** to confirm the new fixture passes (or xfails as
+6. **Run the suite** to confirm the new fixture passes (or xfails as
    intended):
 
    ```bash
-   pytest tests/integration/ -k "<slug>"
+   pytest -m integration tests/integration/ -k "<slug>"
    ```
 
-6. **Commit** the PDF + YAML together. The auto-discovery in
-   `test_fixtures.py` picks it up; no code edits needed.
+7. **Commit** the PDF, the `*.docling.json`, and the YAML together. The
+   auto-discovery in `test_fixtures.py` picks it up; no code edits needed.
 
 ## Regenerating an existing fixture after a merger change
 
 If you change merger behavior and the old `first_row` / `last_row`
-assertions no longer match, regenerate:
+assertions no longer match, regenerate the YAML against the existing
+snapshot:
 
 ```bash
 python -m tests.integration._tools.regenerate_expected \
@@ -145,6 +164,34 @@ python -m tests.integration._tools.regenerate_expected \
 Diff the YAML. If the change is *intentional* (the merger is now producing
 a better merge), commit the updated YAML. If it's *unintentional*
 regression, revert the merger change.
+
+You should not need to touch the `*.docling.json` snapshot for a merger
+change — the snapshot is the parser's output, not ours. Regenerate
+snapshots only when you've upgraded docling itself (rare; do it from a
+maintainer's macOS box and update the YAMLs in the same PR).
+
+## Snapshot vs. live-parse test lanes
+
+The integration suite has two modes:
+
+- **Snapshot lane (default).** `pytest -m integration` loads the committed
+  `*.docling.json` snapshots and runs table-stitcher against them. Fast,
+  deterministic, no model downloads. This is what runs on every PR.
+- **Live-parse lane (opt-in).** `pytest -m integration --live-parse`
+  re-parses each PDF with docling end-to-end. Slow, downloads models,
+  OCR-engine-dependent. Comparisons run in lenient mode (only structural
+  fields — `members`, `pages`, `shape` — are checked; cell text is
+  skipped). The nightly
+  [`upstream-smoke.yml`](.github/workflows/upstream-smoke.yml) workflow
+  runs this on macOS and is allowed to fail; treat persistent red there
+  as a docling-upstream signal, not a merge blocker.
+
+Run the live-parse lane locally if you want to verify a fixture against
+your own machine's OCR engine:
+
+```bash
+pytest -m integration --live-parse tests/integration/ -k "<slug>"
+```
 
 ## Synthetic fixtures
 

@@ -1,0 +1,46 @@
+name: upstream-smoke
+
+# Live-parse lane: re-runs docling against the fixture PDFs to catch upstream
+# regressions (docling, OCR engines, model updates) without blocking PRs.
+#
+# Comparisons run in lenient mode — only structural fields (members, pages,
+# shape) are checked, since cell text varies by OCR engine. The job is
+# allowed to fail; treat persistent red here as a signal to investigate, not
+# a merge blocker.
+
+on:
+  schedule:
+    # Daily at 06:17 UTC. Off-hour to avoid contention with weekday CI bursts.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  live-parse:
+    name: live-parse (${{ matrix.os }})
+    # macos-latest matches the OCR engine (ocrmac / Apple Vision) used to
+    # generate the committed snapshots, so structural drift here points at a
+    # genuine docling change rather than at OCR-engine divergence.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: cache docling models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: docling-models-${{ runner.os }}-v1
+      - name: install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: live-parse integration tests (lenient)
+        # Allowed to fail — we never want this to block a PR.
+        continue-on-error: true
+        run: pytest -m integration --live-parse tests/ -v

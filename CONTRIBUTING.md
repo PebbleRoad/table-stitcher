@@ -101,6 +101,17 @@ should produce.
    This writes `<slug>.<provenance>.docling.json` next to the PDF. Commit
    it together with the PDF and YAML.
 
+   **Snapshot quality note.** The current corpus was snapshotted on macOS,
+   where docling auto-selects `ocrmac` (Apple Vision). On the corpus PDFs
+   it produces noticeably cleaner text than the cross-platform engines
+   (easyocr/tesseract) — fewer dropped spaces, fewer mis-recognised
+   characters, no language-pack hallucinations. Once a snapshot is
+   committed it is the source of truth and engine choice no longer
+   matters: tests read the JSON directly. If you are on Linux/Windows and
+   adding a fixture, you can generate with whatever engine docling picks
+   for you and submit the PR — a maintainer will eyeball the snapshot and
+   regenerate on macOS if the OCR quality is poor.
+
 3. **Generate `expected.yaml`** from the snapshot:
 
    ```bash

@@ -1,18 +1,12 @@
-description: |
-  Four-page COVID-19 vs MIS-C lab comparison from the PT2 test split. The
-  paper contains THREE distinct tables by width (4 / 7 / 6), each spanning
-  multiple pages. Fragment distribution:
-    - idx=0 page 1 (width 4)  — standalone baseline-demographics table
-    - idx=1 page 2 (width 7)  — hemodynamic labs (continues onto page 3)
-    - idx=2 page 3 (width 7)  — continuation of the width-7 table
-    - idx=3 page 3 (width 6)  — cytokine panel (continues onto page 4)
-    - idx=4 page 4 (width 6)  — continuation of the width-6 table
-
-  idx=1 and idx=2 originally failed to merge because each fragment had a
-  different data-as-headers row (parser ate the real header on each page).
-  The adapter's looks_like_data now catches "value (range)" patterns like
-  '280 (176, 404)', flagging both fragments headerless so the width-match
-  path joins them. Result: 3 logical tables as expected.
+description: "Four-page COVID-19 vs MIS-C lab comparison from the PT2 test split. The\npaper contains\
+  \ THREE distinct tables by width (4 / 7 / 6), each spanning\nmultiple pages. Fragment distribution:\n\
+  \  - idx=0 page 1 (width 4)  — standalone baseline-demographics table\n  - idx=1 page 2 (width 7)  —\
+  \ hemodynamic labs (continues onto page 3)\n  - idx=2 page 3 (width 7)  — continuation of the width-7\
+  \ table\n  - idx=3 page 3 (width 6)  — cytokine panel (continues onto page 4)\n  - idx=4 page 4 (width\
+  \ 6)  — continuation of the width-6 table\n\nidx=1 and idx=2 originally failed to merge because each\
+  \ fragment had a\ndifferent data-as-headers row (parser ate the real header on each page).\nThe adapter's\
+  \ looks_like_data now catches \"value (range)\" patterns like\n'280 (176, 404)', flagging both fragments\
+  \ headerless so the width-match\npath joins them. Result: 3 logical tables as expected.\n"
 config: {}
 logical_tables:
 - members:
@@ -44,7 +38,7 @@ logical_tables:
   - 2
   - 3
   shape:
-  - 41
+  - 46
   - 7
   columns:
   - Column_0

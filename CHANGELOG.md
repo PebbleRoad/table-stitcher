@@ -9,6 +9,17 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Fixed
 
+- **Category rows incorrectly folded into preceding data rows** (`merger.py`).
+  `stitch_split_cells()` previously folded any row with exactly one non-empty
+  cell into the row above it. Category/section-header rows (e.g. "Theme 2:
+  Trust and Credibility" with text only in col 0) matched this pattern and
+  were silently merged into the preceding data row, mangling participant IDs
+  and destroying table structure. The fix: a non-empty col 0 in the candidate
+  row signals a new record or section header — not an overflow — and folding
+  is skipped. Legitimate split-cell continuations always have col 0 empty.
+  Six existing fixture YAMLs updated to reflect the corrected (higher) row
+  counts — the old YAMLs encoded the buggy folded output.
+
 - **False merge of independent same-width headerless tables** (`merger.py`).
   When two adjacent tables both have `is_headerless=True` and the same column
   count, the merger now requires a layout signal (the left table must end near

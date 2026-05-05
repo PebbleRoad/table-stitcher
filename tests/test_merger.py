@@ -647,6 +647,42 @@ class TestMergeDecisionSignals:
 
 
 class TestStitchSplitCells:
+    def test_category_row_with_nonempty_col0_is_not_folded(self):
+        """Category rows (text only in col 0) must not be folded into the previous data row.
+
+        Regression for bug2: thematic analysis tables have shaded category rows like
+        'Theme 2: Trust and Credibility' with text only in col 0. Previously these
+        were folded into the preceding participant row because the only check was
+        len(nonempty_idxs)==1. The fix: a non-empty col 0 signals a new record or
+        section header, not an overflow.
+        """
+        df = pd.DataFrame(
+            [
+                ["P-07", "I live in a rural area.", "Connectivity"],
+                ["Theme 2: Trust and Credibility", "", ""],
+                ["P-03", "I found five different answers.", "Info overload"],
+            ],
+            columns=["Participant", "Verbatim Quote", "Sub-theme"],
+        )
+        out = stitch_split_cells(df)
+        assert out.shape == (3, 3)
+        assert out.iloc[0, 0] == "P-07"
+        assert out.iloc[1, 0] == "Theme 2: Trust and Credibility"
+        assert out.iloc[2, 0] == "P-03"
+
+    def test_continuation_with_empty_col0_still_folds(self):
+        """Genuine split-cell continuations (col 0 empty) must still fold correctly."""
+        df = pd.DataFrame(
+            [
+                ["P-18", "When I got the diagnosis I went", "behaviour"],
+                ["", "down a rabbit hole on YouTube.", ""],
+            ],
+            columns=["Participant", "Verbatim Quote", "Sub-theme"],
+        )
+        out = stitch_split_cells(df)
+        assert out.shape == (1, 3)
+        assert "rabbit hole" in out.iloc[0, 1]
+
     def test_single_nonempty_cell_folds_into_previous_row(self):
         df = pd.DataFrame(
             [

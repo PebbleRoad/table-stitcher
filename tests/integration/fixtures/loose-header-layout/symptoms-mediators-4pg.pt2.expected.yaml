@@ -14,16 +14,14 @@ logical_tables:
   - 3
   - 4
   shape:
-  - 93
+  - 126
   - 2
   columns:
   - Symptoms
   - Potential mediators
   first_row:
-  - 'Dermatologie manifestations
-
-    Flush, erythema'
-  - Histamine, Bradykinin
+  - Dermatologie manifestations
+  - ''
   last_row:
   - Inhibits the proliferation of tumor cell
   - Oncostatin M

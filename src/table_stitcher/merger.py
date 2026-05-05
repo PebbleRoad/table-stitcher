@@ -723,7 +723,12 @@ def _classify_sequential_pair(
     # --- Headerless continuation ---
     if tB.is_headerless:
         if tA.width == tB.width:
-            return True, "headerless_width_match", False, []
+            # When tA also has no real header, width alone is not enough —
+            # two independent same-width tables would always match. Require
+            # layout (tA near page bottom → tB near page top) to confirm the
+            # table actually overflowed onto the next page.
+            if not tA.is_headerless or layout_suggests_continuation(tA, tB, cfg):
+                return True, "headerless_width_match", False, []
         if width_diff <= cfg.headerless_width_tolerance and layout_suggests_continuation(
             tA, tB, cfg
         ):

@@ -7,6 +7,17 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **False merge of independent same-width headerless tables** (`merger.py`).
+  When two adjacent tables both have `is_headerless=True` and the same column
+  count, the merger now requires a layout signal (the left table must end near
+  the bottom of its page, `vert_bottom >= bottom_band_min`) before merging.
+  Previously, column count alone was sufficient — three independent clinical
+  lab panels (each 4 columns, no header row) collapsed into one 22-row table.
+  Legitimate multi-page headerless tables are unaffected: they fill their pages
+  and always produce a strong layout signal.
+
 ### Added
 
 - Parser-neutral YAML fixture layer (`tests/fixtures/tablemeta/`) plus

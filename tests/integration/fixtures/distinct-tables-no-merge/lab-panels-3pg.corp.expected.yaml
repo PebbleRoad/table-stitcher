@@ -1,0 +1,74 @@
+description: Three independent clinical lab panels (Metabolic, Liver Function, Lipid Profile) each on
+  their own page with no column header row. Docling assigns no column_header cells so the adapter marks
+  all three is_headerless=True and generates Column_0..3 names. All panels have 4 columns. Previously
+  the pipeline merged all three into one 22-row table via headerless_width_match because same column count
+  was the only check. The fix requires layout corroboration (tA near page bottom >= 0.60) when both sides
+  are headerless — these panels end mid-page (vert_bottom 0.46, 0.30) and correctly remain separate.
+config: {}
+logical_tables:
+- members:
+  - 0
+  pages:
+  - 1
+  shape:
+  - 8
+  - 4
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  first_row:
+  - Sodium
+  - '138'
+  - 135-145 mmol/L
+  - Normal
+  last_row:
+  - Glucose (fasting)
+  - '6.8'
+  - 3.9-6.0 mmol/L
+  - HIGH ›
+- members:
+  - 1
+  pages:
+  - 2
+  shape:
+  - 8
+  - 4
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  first_row:
+  - Total Bilirubin
+  - '14'
+  - 3-20 µmol/L
+  - Normal
+  last_row:
+  - Albumin
+  - '41'
+  - 35-52 g/L
+  - Normal
+- members:
+  - 2
+  pages:
+  - 3
+  shape:
+  - 6
+  - 4
+  columns:
+  - Column_0
+  - Column_1
+  - Column_2
+  - Column_3
+  first_row:
+  - Total Cholesterol
+  - '5.2'
+  - <5.0 mmol/L
+  - BORDER ›
+  last_row:
+  - Total/HDL Ratio
+  - '4.7'
+  - <4.0
+  - HIGH ›

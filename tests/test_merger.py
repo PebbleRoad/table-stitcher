@@ -459,6 +459,76 @@ class TestMergeDecisionSignals:
         results = merge_multipage_tables(metas, MultiPageConfig(max_width_difference=2))
         assert len(results) == 2
 
+    def test_two_headerless_same_width_mid_page_no_merge(self):
+        """Two headerless tables with same width but no layout signal → stay separate.
+
+        Regression for the lab-panels false-merge bug: three independent clinical
+        panels each had 4 columns and is_headerless=True. headerless_width_match
+        was merging them purely on column count. The fix requires layout
+        corroboration (tA near page bottom) when both sides are headerless.
+        Rows use distinct domain vocabulary so row_similarity cannot rescue the merge.
+        """
+        df_a = pd.DataFrame(
+            {
+                "Column_0": ["Sodium"],
+                "Column_1": ["138"],
+                "Column_2": ["mmol"],
+                "Column_3": ["Normal"],
+            }
+        )
+        df_b = pd.DataFrame(
+            {
+                "Column_0": ["Bilirubin"],
+                "Column_1": ["14"],
+                "Column_2": ["umol"],
+                "Column_3": ["Normal"],
+            }
+        )
+        df_c = pd.DataFrame(
+            {
+                "Column_0": ["Cholesterol"],
+                "Column_1": ["5.2"],
+                "Column_2": ["mmol"],
+                "Column_3": ["Border"],
+            }
+        )
+        metas = [
+            _make_meta(idx=0, df=df_a, start_page=1, is_headerless=True, vert_bottom=0.46),
+            _make_meta(idx=1, df=df_b, start_page=2, is_headerless=True, vert_top=0.14),
+            _make_meta(idx=2, df=df_c, start_page=3, is_headerless=True, vert_top=0.14),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 3
+
+    def test_two_headerless_same_width_with_layout_merges(self):
+        """Two headerless tables with same width and layout signal → merge.
+
+        Verifies the fix does not break legitimate multi-page headerless tables
+        where the first table fills most of its page (vert_bottom >= 0.60).
+        """
+        df_a = pd.DataFrame(
+            {
+                "Column_0": ["Sodium"],
+                "Column_1": ["138"],
+                "Column_2": ["mmol"],
+                "Column_3": ["Normal"],
+            }
+        )
+        df_b = pd.DataFrame(
+            {
+                "Column_0": ["Bilirubin"],
+                "Column_1": ["14"],
+                "Column_2": ["umol"],
+                "Column_3": ["Normal"],
+            }
+        )
+        metas = [
+            _make_meta(idx=0, df=df_a, start_page=1, is_headerless=True, vert_bottom=0.91),
+            _make_meta(idx=1, df=df_b, start_page=2, is_headerless=True, vert_top=0.14),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+
     def test_repeated_header_merges(self):
         """Same headers on consecutive pages → merge."""
         df_a = pd.DataFrame({"Name": ["Alice"], "Age": ["30"]})

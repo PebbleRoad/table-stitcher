@@ -398,6 +398,13 @@ def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
             if len(nonempty_idxs) != 1:
                 break
 
+            # A genuine continuation always has col 0 empty — that column
+            # is the record identifier (participant ID, row label, etc.).
+            # A non-empty col 0 means a new record or a category/section
+            # row, not an overflow of the previous cell.
+            if not is_empty_value(next_row_vals[0]):
+                break
+
             cont_idx = nonempty_idxs[0]
             cont_val = str(next_row_vals[cont_idx]).strip()
             target_idx = cont_idx

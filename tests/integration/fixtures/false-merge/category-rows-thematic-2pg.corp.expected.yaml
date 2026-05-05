@@ -1,0 +1,30 @@
+description: 'Two-page thematic analysis table with 4 shaded category rows (Theme 1-4) separating 12 participant
+  data rows. Category rows have text only in col 0 (Participant) with cols 1-2 empty — identical in structure
+  to a split-cell continuation. Previously stitch_split_cells folded every category row into the preceding
+  data row because the only check was len(nonempty_idxs)==1. The fix adds a guard: if col 0 of the candidate
+  row is non-empty, it is a new record or section header, not an overflow. Result: 16 rows preserved (4
+  category + 12 data) instead of 12 rows with mangled participant IDs.'
+config: {}
+logical_tables:
+- members:
+  - 0
+  - 1
+  pages:
+  - 1
+  - 2
+  shape:
+  - 16
+  - 3
+  columns:
+  - Participant
+  - Verbatim Quote (excerpt)
+  - Sub-theme
+  first_row:
+  - 'Theme 1: Information Access Barriers'
+  - ''
+  - ''
+  last_row:
+  - P-18
+  - '"When I got the diagnosis I went down a rabbit hole on YouTube for two weeks. It made my anxiety
+    much worse."'
+  - Information-seek ing behaviour

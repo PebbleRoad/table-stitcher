@@ -11,7 +11,7 @@ logical_tables:
   - 2
   - 3
   shape:
-  - 18
+  - 20
   - 2
   columns:
   - Theme

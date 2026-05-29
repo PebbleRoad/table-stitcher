@@ -7,6 +7,30 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-29
+
+### Added
+
+- **Intervening-content guard** (`block_on_intervening_content`, default `True`).
+  Two tables that share a column schema but belong to different sections — a
+  heading sits between them in reading order — are no longer stitched into one.
+  A genuine page-split continuation has nothing but page furniture between its
+  fragments, so a section heading between them is a reliable "separate tables"
+  signal. The docling adapter computes a per-table `TableMeta.content_before`
+  signal; both merge paths (`_classify_sequential_pair` and
+  `should_force_orphan_merge`) consult it.
+  - Running headers mislabeled as headings (e.g. a journal banner labeled
+    `page_header` on one page and `section_header` on another, or a repeated
+    "Summary of benefits" banner above every page of a multi-page table) are
+    detected as furniture via near-identical (Jaccard ≥ 0.8) recurrence across
+    pages, so they do not block legitimate continuations.
+  - Only `section_header`/`title` nodes block; plain paragraphs, list items,
+    captions, footnotes and figures are deliberately ignored, since real PDFs
+    routinely scatter those between fragments of a single continued table.
+  - Fixes over-eager merging of same-schema per-section tables (e.g. an
+    insurance policy's eight `Prestige | Elite | Classic` benefit grids being
+    collapsed into one).
+
 ## [0.3.0] — 2026-05-06
 
 ### Fixed

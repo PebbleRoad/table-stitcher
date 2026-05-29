@@ -19,6 +19,7 @@ from docling_core.types.doc import (
 from ..merger import (
     first_row_has_number,
     is_numeric_like_colnames,
+    jaccard,
     normalize_col_name,
     tokenize,
 )
@@ -556,6 +557,176 @@ def _get_ref_pointer(ref_obj: Any) -> str:
 # -------------------------------------------------------------------
 
 
+# -------------------------------------------------------------------
+# Intervening-content detection (reading-order furniture filtering)
+#
+# Philosophy: a table split across a page break has nothing but page
+# furniture (running headers/footers, page numbers) between its fragments.
+# If *substantive* body content — a heading, paragraph, list item, or real
+# figure — sits between two fragments in reading order, they are separate
+# tables that merely share a column schema. These helpers classify the body
+# nodes between consecutive tables so the merger can refuse such merges.
+# -------------------------------------------------------------------
+
+# Only a structural section boundary reliably means "these are separate
+# tables." Plain prose, list items, captions, footnotes and figures all turn
+# up *between* fragments of genuine continuations on real-world PDFs (cell text
+# extracted as body nodes, interleaved multi-column reading order, repeated
+# legends), so blocking on them regresses legitimate merges. A new heading
+# between two tables, by contrast, is a clean separator.
+_BLOCKING_LABELS = {"section_header", "title"}
+
+_CONTINUATION_RE = re.compile(r"\bcont(?:inued|inuation|'?d|\.)?\b", re.IGNORECASE)
+
+
+def _label_str(item: Any) -> str:
+    """Normalize a docling item label (enum or str) to a lowercase string."""
+    lab = getattr(item, "label", None)
+    return str(getattr(lab, "value", lab) or "").lower()
+
+
+def _norm_text(item: Any) -> str:
+    """Whitespace-collapsed lowercase text of an item."""
+    return " ".join(str(getattr(item, "text", "") or "").split()).lower()
+
+
+def _flatten_body_refs(doc: Any) -> list[str]:
+    """Return body reference pointers in reading order (DFS through groups)."""
+    seq: list[str] = []
+    groups = getattr(doc, "groups", []) or []
+    seen_groups: set[int] = set()
+
+    def walk(node: Any) -> None:
+        children = getattr(node, "children", None) or []
+        for child in children:
+            ref = _get_ref_pointer(child)
+            if not ref:
+                continue
+            if ref.startswith("#/groups/"):
+                try:
+                    gi = int(ref.split("/")[-1])
+                except ValueError:
+                    continue
+                # Guard against malformed self-referential group cycles.
+                if gi in seen_groups or not (0 <= gi < len(groups)):
+                    continue
+                seen_groups.add(gi)
+                walk(groups[gi])
+            else:
+                seq.append(ref)
+
+    body = getattr(doc, "body", None)
+    if body is not None:
+        walk(body)
+    return seq
+
+
+def _resolve_ref(doc: Any, ref: str) -> Optional[Any]:
+    """Resolve a ``#/kind/N`` pointer to its item, or None."""
+    try:
+        _, kind, n_str = ref.split("/")
+        n = int(n_str)
+    except (ValueError, AttributeError):
+        return None
+    coll = {
+        "texts": getattr(doc, "texts", None),
+        "tables": getattr(doc, "tables", None),
+        "pictures": getattr(doc, "pictures", None),
+    }.get(kind)
+    if not coll or n >= len(coll):
+        return None
+    return coll[n]
+
+
+def _detect_running_furniture(doc: Any, cfg: MultiPageConfig) -> set[str]:
+    """
+    Identify headings that are actually running headers, not section boundaries.
+
+    Only headings (``_BLOCKING_LABELS``) can block a merge, so only headings
+    need to be exempted. A heading is a running header when near-identical text
+    appears on a *different* page — e.g. a repeated ``Summary of benefits``
+    banner above every page of a multi-page table, or a journal name that one
+    page labels ``page_header`` and another mislabels ``section_header`` (the
+    parser inconsistency this protects against).
+
+    Similarity uses symmetric Jaccard with a high threshold (near-duplicate).
+    A real, unique heading such as ``38e - Trip postponement`` has no
+    near-duplicate on another page, so it correctly stays a blocker — unlike a
+    looser containment metric, which a short subset string (a TOC entry, say)
+    would spuriously satisfy.
+    """
+    texts = getattr(doc, "texts", []) or []
+    # (ref, tokens, page, label) for every text node — the comparison pool.
+    nodes: list[tuple[str, set, Any, str]] = []
+    for i, item in enumerate(texts):
+        prov = getattr(item, "prov", None) or []
+        page = getattr(prov[0], "page_no", None) if prov else None
+        nodes.append((f"#/texts/{i}", tokenize(_norm_text(item)), page, _label_str(item)))
+
+    furniture: set[str] = set()
+    for ref, toks, page, label in nodes:
+        if label not in _BLOCKING_LABELS or not toks or page is None:
+            continue
+        for ref2, toks2, page2, _ in nodes:
+            if ref2 == ref or page2 is None or page2 == page or not toks2:
+                continue
+            if jaccard(toks, toks2) >= 0.8:
+                furniture.add(ref)
+                break
+    return furniture
+
+
+def _ref_is_blocking(doc: Any, ref: str, furniture: set[str], cfg: MultiPageConfig) -> bool:
+    """Whether a body node between two tables marks a real table boundary.
+
+    Only a non-furniture section heading qualifies (see ``_BLOCKING_LABELS``).
+    Figures, list items and plain paragraphs are deliberately ignored: on real
+    PDFs they routinely appear between fragments of a single continued table.
+    """
+    if ref in furniture or not ref.startswith("#/texts/"):
+        return False
+    item = _resolve_ref(doc, ref)
+    if item is None:
+        return False
+    if _label_str(item) not in _BLOCKING_LABELS:
+        return False
+    text = str(getattr(item, "text", "") or "")
+    if not text.strip():
+        return False
+    # A "(continued)" heading marks a continuation, not a new table.
+    if _CONTINUATION_RE.search(text):
+        return False
+    return True
+
+
+def _compute_content_before(doc: Any, cfg: MultiPageConfig) -> dict[int, bool]:
+    """
+    For each table (keyed by docling index), whether substantive body content
+    separates it from the previous table in reading order. Tables absent from
+    the body reading order (orphans) are omitted, disabling the guard for them.
+    """
+    seq = _flatten_body_refs(doc)
+    if not seq:
+        return {}
+    furniture = _detect_running_furniture(doc, cfg)
+
+    result: dict[int, bool] = {}
+    prev_table_seen = False
+    blocking_seen = False
+    for ref in seq:
+        if ref.startswith("#/tables/"):
+            try:
+                t_idx = int(ref.split("/")[-1])
+            except ValueError:
+                continue
+            result[t_idx] = prev_table_seen and blocking_seen
+            prev_table_seen = True
+            blocking_seen = False
+        elif not blocking_seen and _ref_is_blocking(doc, ref, furniture, cfg):
+            blocking_seen = True
+    return result
+
+
 class DoclingAdapter:
     """
     Table-stitcher adapter for Docling (docling-core).
@@ -568,6 +739,15 @@ class DoclingAdapter:
         tables_meta: list[TableMeta] = []
         total = len(doc.tables)
         skipped = 0
+
+        # Reading-order map: which tables have substantive body content before
+        # them (used by the merger's intervening-content guard). Computed once.
+        content_before_map: dict[int, bool] = {}
+        if cfg.block_on_intervening_content:
+            try:
+                content_before_map = _compute_content_before(doc, cfg)
+            except Exception as e:  # never let the guard break extraction
+                log.warning(f"Intervening-content detection failed: {e}")
 
         for idx, table in enumerate(doc.tables):
             try:
@@ -640,6 +820,7 @@ class DoclingAdapter:
                     row_count=df.shape[0],
                     continuation_content=continuation_content,
                     is_headerless=is_headerless,
+                    content_before=content_before_map.get(idx),
                 )
             )
 

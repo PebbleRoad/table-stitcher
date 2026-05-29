@@ -27,7 +27,7 @@ from docling_core.types.doc import (
 )
 
 from table_stitcher import stitch_tables
-from table_stitcher.adapters.docling import DoclingAdapter, _compute_content_before
+from table_stitcher.adapters.docling import _compute_content_before
 from table_stitcher.models import MultiPageConfig
 
 PLAN_HEADER = ["", "Prestige plan", "Elite plan", "Classic plan"]

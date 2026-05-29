@@ -30,6 +30,7 @@ def _make_meta(
     is_headerless: bool = False,
     vert_top: float = None,
     vert_bottom: float = None,
+    content_before: bool = None,
 ) -> TableMeta:
     """Build a minimal TableMeta for testing."""
     return TableMeta(
@@ -51,6 +52,7 @@ def _make_meta(
         numeric_like_cols=is_numeric_like_colnames([str(c) for c in df.columns]),
         row_count=df.shape[0],
         is_headerless=is_headerless,
+        content_before=content_before,
     )
 
 
@@ -789,3 +791,61 @@ class TestStitchSplitCells:
         assert out.shape == (1, 4)
         # Continuation folded into the 4th column (Notes, by positional match).
         assert out.iloc[0, 3] == "first\nsecond line"
+
+
+# ---------------------------------------------------------------------------
+# Intervening-content guard: a paragraph/heading between two same-schema
+# tables means they are separate tables, not one split across a page break.
+# ---------------------------------------------------------------------------
+
+
+class TestInterveningContentGuard:
+    """``content_before`` blocks merges that header similarity would allow."""
+
+    @staticmethod
+    def _benefit(idx, page, label, content_before=None):
+        # Single-row plan grid with the identical Prestige/Elite/Classic header
+        # shared by every COVID endorsement benefit table — header Jaccard 1.0.
+        df = pd.DataFrame(
+            [[label, "S$8,000", "S$5,000", "S$3,000"]],
+            columns=["", "Prestige plan", "Elite plan", "Classic plan"],
+        )
+        return _make_meta(idx, df, start_page=page, content_before=content_before)
+
+    def test_identical_headers_merge_without_guard_signal(self):
+        # Baseline: with content_before=None the strict-header path still merges
+        # (this is the over-eager behaviour the guard is designed to stop).
+        a = self._benefit(0, 1, "Trip cancellation")
+        b = self._benefit(1, 2, "Trip postponement")
+        logical = merge_multipage_tables([a, b], MultiPageConfig())
+        assert len(logical) == 1
+        assert "header_similarity_strict" in logical[0].merge_reason
+
+    def test_content_between_blocks_merge(self):
+        # A heading/paragraph sits before the second fragment -> stay separate.
+        a = self._benefit(0, 1, "Trip cancellation")
+        b = self._benefit(1, 2, "Trip postponement", content_before=True)
+        logical = merge_multipage_tables([a, b], MultiPageConfig())
+        assert len(logical) == 2
+
+    def test_furniture_only_gap_still_merges(self):
+        # content_before=False means only furniture (running header) sat between
+        # the fragments -> a genuine continuation, still merged.
+        a = self._benefit(0, 1, "Summary part 1")
+        b = self._benefit(1, 2, "Summary part 2", content_before=False)
+        logical = merge_multipage_tables([a, b], MultiPageConfig())
+        assert len(logical) == 1
+
+    def test_flag_disables_guard(self):
+        a = self._benefit(0, 1, "Trip cancellation")
+        b = self._benefit(1, 2, "Trip postponement", content_before=True)
+        cfg = MultiPageConfig(block_on_intervening_content=False)
+        logical = merge_multipage_tables([a, b], cfg)
+        assert len(logical) == 1
+
+    def test_none_is_backward_compatible(self):
+        # Adapters that don't populate the field (None) must not be affected.
+        a = self._benefit(0, 1, "Trip cancellation")
+        b = self._benefit(1, 2, "Trip postponement", content_before=None)
+        logical = merge_multipage_tables([a, b], MultiPageConfig())
+        assert len(logical) == 1

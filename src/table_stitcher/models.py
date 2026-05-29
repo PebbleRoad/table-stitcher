@@ -92,6 +92,19 @@ class MultiPageConfig:
     The structural signal (1 col following N cols) is strong enough for most cases.
     """
 
+    # --- Intervening-Content Guard ---
+    block_on_intervening_content: bool = True
+    """
+    If True, refuse to merge two fragments when substantive body content
+    (a heading, paragraph, list item, or figure) appears between them in
+    reading order. A genuine page-split continuation has nothing between its
+    fragments except page furniture (running headers/footers, page numbers),
+    which is filtered out, as are table-attached captions/footnotes and
+    ``(continued)`` markers. Requires an adapter that populates
+    ``TableMeta.content_before``; when it is left ``None`` the guard is a
+    no-op, so non-docling adapters are unaffected.
+    """
+
     # --- Cell Stitching ---
     stitch_separator: str = "\n"
     """Character(s) used to join split cell content."""
@@ -118,6 +131,13 @@ class TableMeta:
     row_count: int
     continuation_content: list[dict] = field(default_factory=list)
     is_headerless: bool = False
+    content_before: Optional[bool] = None
+    """
+    Whether substantive (non-furniture) body content immediately precedes this
+    fragment in reading order, since the previous table fragment. ``None`` means
+    the adapter could not place the table in reading order (e.g. an orphan
+    table), in which case the intervening-content guard is skipped for it.
+    """
 
 
 @dataclass

@@ -312,6 +312,11 @@ def should_force_orphan_merge(h: TableMeta, d: TableMeta, cfg: MultiPageConfig) 
         return False, ""
     if abs(h.width - d.width) > cfg.max_width_difference:
         return False, ""
+    # Intervening-content guard — sibling of the one in _classify_sequential_pair.
+    # Pass 2 reaches this without going through that function, so the guard must
+    # be repeated here: a heading before the data fragment means a new table.
+    if cfg.block_on_intervening_content and d.content_before:
+        return False, "content_between_tables"
 
     layout = layout_suggests_continuation(h, d, cfg)
     if h.is_header_orphan and d.is_data_orphan:
@@ -704,6 +709,17 @@ def _classify_sequential_pair(
     page_gap = tB.start_page - tA.start_page
     if page_gap < 1 or page_gap > cfg.max_page_gap:
         return False, "page_gap_out_of_range", False, []
+
+    # --- Intervening-content guard ---
+    # A genuine page-split continuation has nothing but page furniture between
+    # its fragments. Substantive body content (a heading, paragraph, list item,
+    # or figure) between tA and tB means they are separate tables that merely
+    # share a column schema, not one table split across a page break. The
+    # adapter computes this in reading order (furniture, captions and footnotes
+    # are already filtered out); ``None`` means position unknown, so we defer to
+    # the other signals rather than block.
+    if cfg.block_on_intervening_content and tB.content_before:
+        return False, "content_between_tables", False, []
 
     # --- Spillover (checked before width guards since spillover can cross
     # width boundaries legitimately: 1-col fragment follows N-col table) ---

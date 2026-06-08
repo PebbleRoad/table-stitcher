@@ -7,6 +7,8 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-08
+
 ### Fixed
 
 - **Spanning body cells duplicated across columns on multi-page merge**

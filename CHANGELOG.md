@@ -7,6 +7,19 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Spanning body cells duplicated across columns on multi-page merge**
+  (`adapters/docling.py`). Docling repeats a `col_span=N` cell's text across
+  every column it covers; the merge round-trip rebuilt those as `N` separate
+  `col_span=1` cells, leaking a full-width description into every value column
+  and displacing the real values (a repeated `col_span` header behaved the same
+  way). Injection now matches each merged row back to its source grid row and
+  re-emits the original spans; rows the merger transformed (stitched
+  continuations, folded overflow) fall back to the flat 1x1 rebuild. The match
+  uses the original span metadata, never value equality, so coincidentally-equal
+  adjacent values (e.g. two plan columns sharing a cap) stay separate cells.
+
 ## [0.4.0] — 2026-05-29
 
 ### Added

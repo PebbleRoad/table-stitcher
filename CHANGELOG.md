@@ -7,6 +7,17 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **`__version__` was hardcoded and stale** (`__init__.py`). It read `"0.2.0"`
+  regardless of the installed release, since nothing tied it to the version in
+  `pyproject.toml`. It is now derived from the installed distribution metadata
+  via `importlib.metadata.version("table-stitcher")`, so it always reflects the
+  actual release (falling back to `"0.0.0+unknown"` when run from an
+  uninstalled source tree). The release gate now also asserts
+  `__version__` matches the `pyproject.toml` version, so the two can't drift
+  again.
+
 ## [0.4.1] — 2026-06-08
 
 ### Fixed

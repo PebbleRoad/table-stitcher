@@ -24,13 +24,20 @@ Usage (custom parser):
 
 import logging
 import time
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Any, Optional
 
 from .adapters.base import TableStitcherAdapter
 from .merger import merge_multipage_tables
 from .models import LogicalTable, MergeTrace, MultiPageConfig, TableMeta
 
-__version__ = "0.2.0"
+# Single source of truth: the installed distribution's version (from
+# pyproject.toml). Derived rather than hardcoded so it can never drift.
+try:
+    __version__ = _pkg_version("table-stitcher")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0+unknown"
 __all__ = [
     "stitch_tables",
     "extract_table_meta",

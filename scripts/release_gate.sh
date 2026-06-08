@@ -69,15 +69,23 @@ else
 fi
 
 echo "==> Smoke-testing installed wheel outside checkout"
+EXPECTED_VERSION="$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+export EXPECTED_VERSION
 (
   cd "$TMP_ENV"
   "$TMP_ENV/venv/bin/python" - <<'PY'
+import os
 import pathlib
+
 import table_stitcher
 
 package_path = pathlib.Path(table_stitcher.__file__).resolve()
+expected = os.environ["EXPECTED_VERSION"]
 assert "site-packages" in str(package_path), package_path
 assert table_stitcher.__version__, "missing __version__"
+assert table_stitcher.__version__ == expected, (
+    f"__version__ {table_stitcher.__version__!r} != pyproject version {expected!r}"
+)
 assert callable(table_stitcher.stitch_tables)
 print(f"installed {table_stitcher.__version__} from {package_path}")
 PY

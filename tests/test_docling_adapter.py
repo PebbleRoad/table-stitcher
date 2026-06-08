@@ -300,6 +300,94 @@ class TestHeaderPreservation:
         assert td.num_rows == 3  # 1 header + 2 data
 
 
+class TestBodySpanPreservation:
+    """Body col_span cells must survive the merge round-trip, not duplicate.
+
+    Docling repeats a spanning cell's text across every column it covers, so a
+    naive grid -> DataFrame -> grid rebuild flattens a ``col_span=N`` body cell
+    into N duplicate ``col_span=1`` cells — leaking a full-width description
+    into every value column and displacing the real values. Passing the member
+    fragments' original TableData lets injection re-emit the original spans.
+    """
+
+    @staticmethod
+    def _cell(text, r, c, *, col_span=1, header=False):
+        return TableCell(
+            text=text,
+            row_span=1,
+            col_span=col_span,
+            column_header=header,
+            row_header=False,
+            start_row_offset_idx=r,
+            end_row_offset_idx=r + 1,
+            start_col_offset_idx=c,
+            end_col_offset_idx=c + col_span,
+        )
+
+    def _fragment(self) -> TableData:
+        """3-col fragment: flat header, a col_span=3 description row, a data row,
+        and a row with coincidentally-equal adjacent values (separate cells)."""
+        c = self._cell
+        # Header row 0
+        h = [
+            c("Section", 0, 0, header=True),
+            c("Plan A", 0, 1, header=True),
+            c("Plan B", 0, 2, header=True),
+        ]
+        # Row 1: description spanning all 3 cols — grid repeats the same object.
+        desc = c("See important notes below", 1, 0, col_span=3)
+        r1 = [desc, desc, desc]
+        # Row 2: ordinary data row.
+        r2 = [c("1", 2, 0), c("100", 2, 1), c("200", 2, 2)]
+        # Row 3: two value columns share a cap value, but are SEPARATE cells.
+        r3 = [c("2", 3, 0), c("150", 3, 1), c("150", 3, 2)]
+        grid = [h, r1, r2, r3]
+        flat = h + [desc, r2[0], r2[1], r2[2], r3[0], r3[1], r3[2]]
+        return TableData(num_rows=4, num_cols=3, table_cells=flat, grid=grid)
+
+    def test_body_colspan_preserved_not_duplicated(self):
+        original = self._fragment()
+        # The DataFrame as _grid_to_dataframe would produce it: the spanning
+        # description duplicated across all three columns.
+        merged_df = pd.DataFrame(
+            [
+                ["See important notes below"] * 3,
+                ["1", "100", "200"],
+                ["2", "150", "150"],
+            ],
+            columns=["Section", "Plan A", "Plan B"],
+        )
+
+        td = _dataframe_to_docling_data(merged_df, original_data=original, member_data=[original])
+
+        # Description row: one origin cell with col_span=3, repeated across the
+        # grid row — NOT three distinct duplicated cells.
+        desc_row = td.grid[1]
+        assert desc_row[0].col_span == 3
+        assert desc_row[0].text == "See important notes below"
+        assert desc_row[1] is desc_row[0] and desc_row[2] is desc_row[0]
+        distinct_desc = [
+            cell for cell in td.table_cells if cell.text == "See important notes below"
+        ]
+        assert len(distinct_desc) == 1
+
+        # Coincidentally-equal values stay as two separate col_span=1 cells.
+        last_row = td.grid[3]
+        assert last_row[1].text == last_row[2].text == "150"
+        assert last_row[1].col_span == 1 and last_row[2].col_span == 1
+        assert last_row[1] is not last_row[2]
+
+    def test_without_member_data_falls_back_to_flat(self):
+        """No member_data -> previous behaviour: flat 1x1 body cells."""
+        original = self._fragment()
+        merged_df = pd.DataFrame(
+            [["See important notes below"] * 3],
+            columns=["Section", "Plan A", "Plan B"],
+        )
+        td = _dataframe_to_docling_data(merged_df, original_data=original)
+        assert all(cell.col_span == 1 for cell in td.grid[1])
+
+
 class TestAdapterProtocol:
     """Verify DoclingAdapter satisfies the protocol."""
 

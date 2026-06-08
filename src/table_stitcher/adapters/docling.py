@@ -419,9 +419,90 @@ def _extract_original_header_rows(
     return header_rows, header_cells
 
 
+def _index_member_rows(
+    member_data: list[Optional[TableData]],
+) -> dict[tuple, list[list[TableCell]]]:
+    """
+    Index every member fragment's original grid rows by their expanded
+    text-vector, for col_span reconstruction during injection.
+
+    Docling repeats a spanning cell's text across each column it covers, so the
+    text-vector of an original grid row equals the DataFrame row that
+    ``_grid_to_dataframe`` produced for it (for any row the merger left
+    untouched). Keying on that vector lets ``_dataframe_to_docling_data``
+    recover the original col_span structure instead of flattening every cell to
+    1x1 — which duplicates a spanning cell into every column it covered on a
+    multi-page merge.
+
+    All rows are indexed, including header rows: a satellite fragment's repeated
+    header (e.g. a ``col_span=6`` banner) arrives in the merged DataFrame as a
+    body row, and must match its original spanning cell rather than duplicate
+    across the value columns. (The anchor's own header rows are reconstructed
+    separately and never looked up here.) Values are buckets because a row can
+    legitimately repeat; identical text-vectors imply identical span structure,
+    so any occurrence is interchangeable.
+    """
+    index: dict[tuple, list[list[TableCell]]] = {}
+    for data in member_data:
+        if not data or not data.grid:
+            continue
+        for row in data.grid:
+            if not row:
+                continue
+            key = tuple((getattr(c, "text", "") or "") if c else "" for c in row)
+            index.setdefault(key, []).append(row)
+    return index
+
+
+def _reemit_body_row(
+    orig_row: list[TableCell], table_row_idx: int, has_row_headers: bool
+) -> tuple[list[TableCell], list[TableCell]]:
+    """
+    Re-emit an original grid body row at a new row offset, preserving col_span.
+
+    Returns ``(grid_row, distinct_cells)`` where ``grid_row`` repeats each
+    spanning cell across the columns it covers (Docling grid convention) and
+    ``distinct_cells`` lists each origin cell once (for ``table_cells``).
+
+    row_span is intentionally clamped to 1: the merged DataFrame represents one
+    logical row per grid row, so a multi-row body span cannot be expressed
+    without desynchronizing the rebuilt grid. (Body row_spans are rare; col_span
+    is the case that corrupts multi-page merges.)
+    """
+    grid_row: list[Optional[TableCell]] = []
+    distinct: list[TableCell] = []
+    for c_idx, cell in enumerate(orig_row):
+        if cell is None:
+            grid_row.append(None)
+            continue
+        start_col = getattr(cell, "start_col_offset_idx", c_idx)
+        if start_col == c_idx:
+            col_span = getattr(cell, "col_span", 1) or 1
+            new_cell = TableCell(
+                text=getattr(cell, "text", "") or "",
+                row_span=1,
+                col_span=col_span,
+                column_header=False,
+                row_header=(c_idx == 0 and has_row_headers)
+                or bool(getattr(cell, "row_header", False)),
+                start_row_offset_idx=table_row_idx,
+                end_row_offset_idx=table_row_idx + 1,
+                start_col_offset_idx=c_idx,
+                end_col_offset_idx=c_idx + col_span,
+            )
+            distinct.append(new_cell)
+            grid_row.append(new_cell)
+        else:
+            # Continuation column of a span originating to the left: repeat the
+            # same cell object, which was already appended at ``start_col``.
+            grid_row.append(grid_row[start_col] if start_col < len(grid_row) else None)
+    return grid_row, distinct
+
+
 def _dataframe_to_docling_data(
     df: pd.DataFrame,
     original_data: Optional[TableData] = None,
+    member_data: Optional[list[Optional[TableData]]] = None,
 ) -> TableData:
     """
     Converts a pandas DataFrame back into Docling's TableData structure.
@@ -431,6 +512,12 @@ def _dataframe_to_docling_data(
     are preserved exactly.  Only the data rows are rebuilt from the DataFrame.
     This prevents the lossy roundtrip that would flatten complex headers into
     simple 1x1 cells.
+
+    When ``member_data`` (the original ``TableData`` of every fragment in the
+    logical table) is provided, body rows the merger left untouched are
+    re-emitted from their original grid cells, preserving col_span. Rows the
+    merger transformed (stitched continuations, folded overflow) fall back to a
+    flat 1x1 rebuild from the DataFrame.
     """
     if df.empty:
         cols = list(df.columns) if len(df.columns) > 0 else ["Column_0"]
@@ -499,16 +586,28 @@ def _dataframe_to_docling_data(
                     break
 
     # --- Build data rows from merged DataFrame ---
+    # Index member fragments' original body rows so spanning cells survive the
+    # round-trip (see _index_member_body_rows).
+    body_index = _index_member_rows(member_data) if member_data else {}
+
     for i, (_, row) in enumerate(df.iterrows()):
-        grid_row: list[TableCell] = []
         table_row_idx = num_header_rows + i
 
-        for j, val in enumerate(row):
-            if pd.isna(val) or val is None:
-                text_val = ""
-            else:
-                text_val = str(val)
+        row_vals = ["" if (pd.isna(v) or v is None) else str(v) for v in row]
 
+        # Re-emit untouched rows from their original grid cells (preserves
+        # col_span); only matches when widths align, so coincidentally-equal
+        # adjacent values are never fused.
+        bucket = body_index.get(tuple(row_vals))
+        if bucket:
+            orig_row = bucket.pop(0)
+            grid_row, distinct = _reemit_body_row(orig_row, table_row_idx, has_row_headers)
+            grid.append(grid_row)
+            table_cells.extend(distinct)
+            continue
+
+        grid_row: list[TableCell] = []
+        for j, text_val in enumerate(row_vals):
             row_header = j == 0 and has_row_headers
 
             cell = TableCell(
@@ -899,9 +998,18 @@ class DoclingAdapter:
 
                 original_data = getattr(anchor_table, "data", None)
 
+                # Original TableData of every fragment, captured in
+                # table_snapshots before any mutation, so injection can recover
+                # each untouched body row's col_span (see
+                # _index_member_body_rows).
+                member_data = [
+                    table_snapshots[m]["data"] for m in lt.members if m in table_snapshots
+                ]
+
                 anchor_table.data = _dataframe_to_docling_data(
                     lt.df,
                     original_data=original_data,
+                    member_data=member_data,
                 )
 
                 for satellite_idx in lt.members[1:]:

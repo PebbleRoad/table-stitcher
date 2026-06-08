@@ -7,6 +7,8 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-06-08
+
 ### Fixed
 
 - **`__version__` was hardcoded and stale** (`__init__.py`). It read `"0.2.0"`

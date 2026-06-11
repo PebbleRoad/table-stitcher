@@ -499,6 +499,42 @@ def _reemit_body_row(
     return grid_row, distinct
 
 
+# Jaccard threshold for recognizing a body row as a reprinted continuation
+# header. Combined with Docling's column_header flag — both must hold — so it
+# stays conservative. Matches the merger's header_sim_strict default; the
+# punctuation-agnostic tokenizer makes it tolerant of per-cell OCR drift such
+# as "(S$)" vs "($$)".
+_REPEATED_HEADER_SIM = 0.6
+
+
+def _row_token_set(cells: list[TableCell]) -> set:
+    """Union of tokenized cell text for a grid row (duplicate span cells fold in)."""
+    toks: set = set()
+    for c in cells:
+        if c:
+            toks |= tokenize(getattr(c, "text", "") or "")
+    return toks
+
+
+def _is_reprinted_header(orig_row: list[TableCell], header_sigs: list[set]) -> bool:
+    """True if ``orig_row`` is a reprinted continuation header to drop from the body.
+
+    Docling reprints the column header at the top of each continuation page; on
+    a multi-row header those rows survive the merge as bogus data rows. They are
+    dropped only when BOTH signals agree: Docling flagged the row
+    ``column_header`` AND it is a tokenized match for one of the reconstructed
+    header-block rows. The flag alone is unreliable — Docling over-flags
+    rowspan/continuation *data* rows as headers — so the content match guards
+    against deleting real data.
+    """
+    if not any(getattr(c, "column_header", False) for c in orig_row if c):
+        return False
+    toks = _row_token_set(orig_row)
+    if not toks:
+        return False
+    return any(jaccard(toks, sig) >= _REPEATED_HEADER_SIM for sig in header_sigs)
+
+
 def _dataframe_to_docling_data(
     df: pd.DataFrame,
     original_data: Optional[TableData] = None,
@@ -587,12 +623,15 @@ def _dataframe_to_docling_data(
 
     # --- Build data rows from merged DataFrame ---
     # Index member fragments' original body rows so spanning cells survive the
-    # round-trip (see _index_member_body_rows).
+    # round-trip (see _index_member_rows).
     body_index = _index_member_rows(member_data) if member_data else {}
+    # Tokenized signatures of the reconstructed header block, for dropping
+    # reprinted continuation headers (see _is_reprinted_header).
+    header_sigs = [s for s in (_row_token_set(h) for h in orig_header_rows) if s]
 
-    for i, (_, row) in enumerate(df.iterrows()):
-        table_row_idx = num_header_rows + i
-
+    emitted = 0
+    for _, row in df.iterrows():
+        table_row_idx = num_header_rows + emitted
         row_vals = ["" if (pd.isna(v) or v is None) else str(v) for v in row]
 
         # Re-emit untouched rows from their original grid cells (preserves
@@ -601,9 +640,15 @@ def _dataframe_to_docling_data(
         bucket = body_index.get(tuple(row_vals))
         if bucket:
             orig_row = bucket.pop(0)
+            if header_sigs and _is_reprinted_header(orig_row, header_sigs):
+                # Reprinted header from a continuation page — already present as
+                # the header block; drop it instead of duplicating into the body.
+                log.debug("Dropped reprinted continuation header row from merged body.")
+                continue
             grid_row, distinct = _reemit_body_row(orig_row, table_row_idx, has_row_headers)
             grid.append(grid_row)
             table_cells.extend(distinct)
+            emitted += 1
             continue
 
         grid_row: list[TableCell] = []
@@ -625,8 +670,9 @@ def _dataframe_to_docling_data(
             table_cells.append(cell)
 
         grid.append(grid_row)
+        emitted += 1
 
-    num_total_rows = num_header_rows + len(df)
+    num_total_rows = num_header_rows + emitted
 
     return TableData(num_rows=num_total_rows, num_cols=num_cols, table_cells=table_cells, grid=grid)
 

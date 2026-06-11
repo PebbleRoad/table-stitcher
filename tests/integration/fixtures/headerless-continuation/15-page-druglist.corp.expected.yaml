@@ -37,6 +37,9 @@ logical_tables:
   shape:
   - 500
   - 3
+  # Injection drops the reprinted header block (title + column names) that the
+  # merged DataFrame still carries as its first two rows: 500 - 2 = header(2) + body(498).
+  injected_rows: 500
   columns:
   - Column_0
   - Column_1

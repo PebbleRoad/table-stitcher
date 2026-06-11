@@ -7,6 +7,21 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reprinted continuation-page headers appended as data rows on multi-page
+  merge** (`adapters/docling.py`). When a table's column header is reprinted at
+  the top of each page — especially a multi-row (hierarchical) header — the
+  repeated header rows survived the merge as bogus data rows, misaligning the
+  stitched table. Injection now drops a body row when it is *both* flagged
+  `column_header` by Docling *and* a tokenized match (Jaccard ≥ 0.6) for the
+  reconstructed header block. Both signals are required: the flag alone is
+  unreliable (Docling over-flags rowspan/continuation *data* rows as headers),
+  and the tokenized comparison is punctuation-agnostic, so per-cell OCR drift
+  such as `(S$)` vs `($$)` is tolerated without any threshold tuning. The merged
+  DataFrame (`lt.df`) is unchanged; only the injected document is de-duplicated.
+  A `debug` log reports each dropped row.
+
 ## [0.4.2] — 2026-06-08
 
 ### Fixed

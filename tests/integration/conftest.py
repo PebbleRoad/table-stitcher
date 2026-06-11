@@ -333,7 +333,15 @@ def assert_public_stitch_injects_docling_doc(
         ctx = f"public stitch for members={members}, pages={exp['pages']}"
 
         assert getattr(anchor.data, "num_rows", 0) > 0, f"{ctx}: anchor has no data"
-        if "shape" in exp:
+        if "injected_rows" in exp:
+            # Exact injected row count. Used when injection legitimately differs
+            # from the parser-neutral shape — e.g. reprinted continuation-page
+            # headers are dropped from the body (they remain in the merged
+            # DataFrame but are not duplicated into the stitched document).
+            assert anchor.data.num_rows == exp["injected_rows"], (
+                f"{ctx}: injected rows {anchor.data.num_rows} != expected {exp['injected_rows']}"
+            )
+        elif "shape" in exp:
             # +1 or more for header rows; this guards that merged data was injected.
             assert anchor.data.num_rows >= exp["shape"][0] + 1, (
                 f"{ctx}: anchor rows {anchor.data.num_rows} do not contain merged body"

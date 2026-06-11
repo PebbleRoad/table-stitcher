@@ -388,6 +388,77 @@ class TestBodySpanPreservation:
         assert all(cell.col_span == 1 for cell in td.grid[1])
 
 
+class TestReprintedHeaderDedup:
+    """Reprinted continuation-page headers are dropped from the injected body,
+    but column_header-flagged rows that don't match the header (Docling
+    over-flagging rowspan/continuation data) are kept.
+    """
+
+    @staticmethod
+    def _cell(text, r, c, *, header):
+        return TableCell(
+            text=text,
+            row_span=1,
+            col_span=1,
+            column_header=header,
+            row_header=False,
+            start_row_offset_idx=r,
+            end_row_offset_idx=r + 1,
+            start_col_offset_idx=c,
+            end_col_offset_idx=c + 1,
+        )
+
+    def _table(self, rows: list) -> TableData:
+        grid = []
+        flat = []
+        for r, (cells_text, is_header) in enumerate(rows):
+            grid_row = [self._cell(t, r, c, header=is_header) for c, t in enumerate(cells_text)]
+            grid.append(grid_row)
+            flat.extend(grid_row)
+        return TableData(num_rows=len(rows), num_cols=len(rows[0][0]), table_cells=flat, grid=grid)
+
+    def test_drops_reprinted_header_keeps_misflagged_data(self):
+        # Anchor: 1-row header "(S$)" + one data row.
+        anchor = self._table([(["SECTION", "LIMIT (S$)"], True), (["Death", "100"], False)])
+        # Continuation: header reprinted with OCR drift "($$)", a data row, and
+        # a row Docling wrongly flagged column_header (real data, distinct text).
+        satellite = self._table(
+            [
+                (["SECTION", "LIMIT ($$)"], True),
+                (["Injury", "50"], False),
+                (["Sub-limit per accident", "999"], True),
+            ]
+        )
+        # Merged DataFrame: the merger concatenates everything, including the
+        # reprinted header and the mis-flagged row.
+        merged_df = pd.DataFrame(
+            [
+                ["Death", "100"],
+                ["SECTION", "LIMIT ($$)"],
+                ["Injury", "50"],
+                ["Sub-limit per accident", "999"],
+            ],
+            columns=["Column_0", "Column_1"],
+        )
+
+        td = _dataframe_to_docling_data(
+            merged_df, original_data=anchor, member_data=[anchor, satellite]
+        )
+
+        body = [r for r in td.grid if not any(getattr(c, "column_header", False) for c in r if c)]
+        body_text = " ".join(str(c.text) for r in body for c in r if c)
+
+        # Reprinted header (drifted) dropped from the body...
+        assert "($$)" not in body_text
+        # ...but the header block still carries the anchor's "(S$)".
+        assert any("(S$)" in (c.text or "") for r in td.grid for c in r if c)
+        # Real data preserved, including the column_header-mis-flagged row.
+        assert "Death" in body_text and "Injury" in body_text
+        assert "Sub-limit per accident" in body_text and "999" in body_text
+        # 1 header row + 3 body rows (one reprinted header removed from 4).
+        assert td.num_rows == 4
+
+
 class TestAdapterProtocol:
     """Verify DoclingAdapter satisfies the protocol."""
 

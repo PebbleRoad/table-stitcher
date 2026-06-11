@@ -73,6 +73,9 @@ logical_tables:
   shape:
   - 46
   - 6
+  # Injection drops the reprinted column header from the continuation page:
+  # 46 - 1 = header(1) + body(45).
+  injected_rows: 46
   columns:
   - Column_0
   - Column_1

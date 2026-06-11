@@ -7,6 +7,21 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reprinted continuation-page headers appended as data rows on multi-page
+  merge** (`adapters/docling.py`). When a table's column header was a
+  multi-row (hierarchical) header reprinted at the top of each page,
+  `_grid_to_dataframe` emitted every grid row — including the rows Docling
+  flagged `column_header=True` — as DataFrame body rows, so each page's
+  reprinted header (and the anchor's own header) survived the merge as bogus
+  data rows, misaligning the table. Leading `column_header=True` grid rows are
+  now excluded from the body; they are still reconstructed as the header block
+  on injection. The fix keys on Docling's structural header flags, so it is
+  immune to per-cell OCR drift (e.g. `(S$)` vs `($$)`) and needs no threshold
+  tuning. Single-row headers and tables without header flags are unaffected.
+  A `debug`-level log reports how many header rows were excluded.
+
 ## [0.4.2] — 2026-06-08
 
 ### Fixed

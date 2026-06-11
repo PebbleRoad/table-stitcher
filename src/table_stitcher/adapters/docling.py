@@ -291,6 +291,20 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
     if not grid:
         return pd.DataFrame()
 
+    # Leading grid rows Docling flagged as column headers. These are
+    # reconstructed separately on injection (_extract_original_header_rows), so
+    # they must never become body rows: otherwise a multi-row header reprinted
+    # at the top of each continuation page is concatenated into the merged body
+    # as bogus data rows. A single-row header is already absorbed as the column
+    # row below; this additionally drops the 2nd..Nth rows of a multi-row
+    # header (and the full header on continuation pages parsed as headerless).
+    n_header_grid = 0
+    for row in grid:
+        if row and any(getattr(c, "column_header", False) for c in row if c):
+            n_header_grid += 1
+        else:
+            break
+
     all_rows = []
     for row in grid:
         row_data = [getattr(cell, "text", str(cell)) if cell else "" for cell in row]
@@ -362,6 +376,19 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
         pre_header_rows = []
         header = first_row
         data_rows = real_content_rows[1:]
+
+    # The column-name logic above may consume only the first row as the header.
+    # When Docling flagged more leading rows as column headers, drop all of them
+    # from the body so reprinted continuation-page headers don't survive as data.
+    if n_header_grid > 0:
+        if n_header_grid > 1:
+            log.debug(
+                "Excluded %d column-header rows from table body "
+                "(multi-row header; reconstructed separately on injection).",
+                n_header_grid,
+            )
+        data_rows = real_content_rows[n_header_grid:]
+        pre_header_rows = []
 
     clean_header = []
     for h in header:

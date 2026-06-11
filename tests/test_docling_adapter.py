@@ -388,6 +388,79 @@ class TestBodySpanPreservation:
         assert all(cell.col_span == 1 for cell in td.grid[1])
 
 
+class TestMultiRowHeaderExcludedFromBody:
+    """Grid rows flagged ``column_header=True`` must not become body rows.
+
+    A multi-row header reprinted at the top of every continuation page would
+    otherwise be concatenated into the merged table as bogus data rows
+    (the header is reconstructed separately on injection).
+    """
+
+    @staticmethod
+    def _cell(text, r, c, *, col_span=1, header):
+        return TableCell(
+            text=text,
+            row_span=1,
+            col_span=col_span,
+            column_header=header,
+            row_header=False,
+            start_row_offset_idx=r,
+            end_row_offset_idx=r + 1,
+            start_col_offset_idx=c,
+            end_col_offset_idx=c + col_span,
+        )
+
+    def _table(self) -> TableData:
+        c = self._cell
+        # 2-row header: [SECTION | AMOUNT(col_span=2)] then [SECTION | BASIC | PREMIUM]
+        amount = c("AMOUNT", 0, 1, col_span=2, header=True)
+        h0 = [c("SECTION", 0, 0, header=True), amount, amount]  # span repeated in grid
+        h1 = [
+            c("SECTION", 1, 0, header=True),
+            c("BASIC", 1, 1, header=True),
+            c("PREMIUM", 1, 2, header=True),
+        ]
+        d0 = [
+            c("Death", 2, 0, header=False),
+            c("100", 2, 1, header=False),
+            c("200", 2, 2, header=False),
+        ]
+        d1 = [
+            c("Injury", 3, 0, header=False),
+            c("50", 3, 1, header=False),
+            c("75", 3, 2, header=False),
+        ]
+        grid = [h0, h1, d0, d1]
+        flat = [h0[0], amount, *h1, *d0, *d1]
+        return TableData(num_rows=4, num_cols=3, table_cells=flat, grid=grid)
+
+    def test_all_header_rows_excluded_from_body(self):
+        table = SimpleNamespace(data=self._table())
+        df = _grid_to_dataframe(table, doc=None)
+
+        # Only the two data rows survive; both header rows are gone.
+        assert df.shape[0] == 2
+        body_text = " ".join(str(v) for v in df.to_numpy().ravel())
+        for header_token in ("AMOUNT", "BASIC", "PREMIUM"):
+            assert header_token not in body_text
+        assert "Death" in body_text and "Injury" in body_text
+
+    def test_single_row_header_unaffected(self):
+        """A single-row header is absorbed as the column row exactly as before."""
+        c = self._cell
+        grid = [
+            [c("Name", 0, 0, header=True), c("Score", 0, 1, header=True)],
+            [c("Alice", 1, 0, header=False), c("10", 1, 1, header=False)],
+        ]
+        flat = [grid[0][0], grid[0][1], grid[1][0], grid[1][1]]
+        table = SimpleNamespace(data=TableData(num_rows=2, num_cols=2, table_cells=flat, grid=grid))
+        df = _grid_to_dataframe(table, doc=None)
+
+        assert list(df.columns) == ["Name", "Score"]
+        assert df.shape[0] == 1
+        assert df.iloc[0].tolist() == ["Alice", "10"]
+
+
 class TestAdapterProtocol:
     """Verify DoclingAdapter satisfies the protocol."""
 

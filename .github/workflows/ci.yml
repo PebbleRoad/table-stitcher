@@ -19,11 +19,13 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: install ruff
-        # Pin via pyproject's dev extra so local + CI run the same version.
+        # Keep this pin in sync with the dev extra in pyproject.toml so local
+        # + CI run the same version. Exact pin because ruff format output
+        # changes between releases and would break lint on untouched files.
         # No need to install the full dev tree (docling, reportlab) just to lint.
         run: |
           python -m pip install --upgrade pip
-          pip install "ruff>=0.6"
+          pip install "ruff==0.16.2"
       - name: ruff check
         run: ruff check .
       - name: ruff format --check

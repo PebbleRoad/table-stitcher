@@ -619,13 +619,34 @@ def _build_orphan_merged_table(
     )
 
 
+def _dedupe_labels(labels: list[str]) -> list[str]:
+    """Make labels unique by suffixing repeats (``B, B`` -> ``B, B.1``)."""
+    used: set[str] = set()
+    counts: dict[str, int] = {}
+    out: list[str] = []
+    for label in labels:
+        candidate = label
+        while candidate in used:
+            counts[label] = counts.get(label, 0) + 1
+            candidate = f"{label}.{counts[label]}"
+        used.add(candidate)
+        out.append(candidate)
+    return out
+
+
 def _build_generic_merged_table(
     members: list[int], meta_by_idx: dict[int, TableMeta], cfg: MultiPageConfig
 ) -> tuple[pd.DataFrame, set[int], list[str]]:
     """Build merged table for the general case."""
     base = meta_by_idx[members[0]]
     merged_df = base.df.copy()
-    canonical_cols = [str(c) for c in base.df.columns]
+    # Duplicate header labels are normal in the wild (rowspan/colspan
+    # parsers, 13F voting-authority triplets), but pd.concat cannot align
+    # frames on a non-unique column Index. Merge under deduped labels and
+    # restore the originals on the way out.
+    original_cols = [str(c) for c in base.df.columns]
+    canonical_cols = _dedupe_labels(original_cols)
+    merged_df.columns = canonical_cols
     merged_pages = set(base.pages)
     warnings: list[str] = []
     prev = base
@@ -648,6 +669,9 @@ def _build_generic_merged_table(
         merged_pages.update(m.pages)
         prev = m
 
+    merged_df.columns = original_cols + [
+        str(c) for c in merged_df.columns[len(original_cols) :]
+    ]
     return merged_df, merged_pages, warnings
 
 

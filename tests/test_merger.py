@@ -228,6 +228,50 @@ class TestWidthOverflowPolicy:
             align_dataframe_to_header(df, ["A"], meta, cfg)
 
 
+class TestDuplicateHeaderLabels:
+    def test_merge_survives_duplicate_header_labels(self):
+        """
+        Extracted headers repeating a label (e.g. 13F voting-authority
+        triplets emitting 'COLUMN 8' x3) must not crash the multipage
+        merge: pd.concat cannot align frames on a non-unique column Index.
+        """
+        cols = ["A", "B", "B"]
+        df1 = pd.DataFrame([["1", "2", "3"]], columns=cols)
+        df2 = pd.DataFrame([["4", "5", "6"]], columns=cols)
+        metas = [
+            _make_meta(idx=0, df=df1, start_page=1),
+            _make_meta(idx=1, df=df2, start_page=2),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.shape == (2, 3)
+        assert results[0].df.iloc[1].tolist() == ["4", "5", "6"]
+        # Original (duplicated) labels are preserved in the output, matching
+        # how single-fragment tables pass through untouched.
+        assert list(results[0].df.columns) == cols
+
+    def test_duplicate_labels_with_wider_continuation(self):
+        cols = ["A", "B", "B"]
+        df1 = pd.DataFrame([["1", "2", "3"]], columns=cols)
+        df2 = pd.DataFrame([["4", "5", "6", "7"]], columns=cols + ["C"])
+        metas = [
+            _make_meta(idx=0, df=df1, start_page=1),
+            _make_meta(idx=1, df=df2, start_page=2),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.shape == (2, 4)
+        assert results[0].df.iloc[1, 3] == "7"
+        assert list(results[0].df.columns)[:3] == cols
+
+    def test_dedupe_labels_avoids_existing_suffix_collision(self):
+        from table_stitcher.merger import _dedupe_labels
+
+        out = _dedupe_labels(["X", "X", "X.1"])
+        assert len(set(out)) == 3
+        assert out[0] == "X"
+
+
 class TestMergeTrace:
     def test_logical_table_explains_merge_reason_and_signals(self):
         df = pd.DataFrame({"Name": ["Alice"], "Age": ["30"]})

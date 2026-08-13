@@ -669,9 +669,7 @@ def _build_generic_merged_table(
         merged_pages.update(m.pages)
         prev = m
 
-    merged_df.columns = original_cols + [
-        str(c) for c in merged_df.columns[len(original_cols) :]
-    ]
+    merged_df.columns = original_cols + [str(c) for c in merged_df.columns[len(original_cols) :]]
     return merged_df, merged_pages, warnings
 
 

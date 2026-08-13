@@ -40,7 +40,10 @@ dev = [
     "docling-core>=2.50,<3",
     "pyyaml>=6.0",
     "reportlab>=4.0",
-    "ruff>=0.6",
+    # Exact pin: ruff format output changes between releases (0.16 started
+    # formatting markdown code blocks), so a range lets a new ruff release
+    # break lint on untouched files. CI installs this same pin.
+    "ruff==0.16.2",
     "build>=1.0",
     "twine>=5.0",
     "pre-commit>=3.0",

@@ -65,8 +65,8 @@ from table_stitcher import stitch_tables
 
 converter = DocumentConverter()
 doc = converter.convert("report.pdf").document
-doc = stitch_tables(doc)                  # merged tables; ready for
-                                          # export_to_markdown() / HTML / LLM
+doc = stitch_tables(doc)  # merged tables; ready for
+# export_to_markdown() / HTML / LLM
 ```
 
 `stitch_tables()` mutates `doc` in place and returns the same object. If you
@@ -94,10 +94,10 @@ Runnable end-to-end scripts live in [`examples/`](examples/):
 from table_stitcher import stitch_tables, MultiPageConfig
 
 config = MultiPageConfig(
-    max_page_gap=1,              # Only merge tables on consecutive pages
-    max_width_difference=2,      # Column count tolerance
-    header_sim_strict=0.6,       # Threshold for repeated header detection
-    stitch_separator="\n",       # Join character for split content
+    max_page_gap=1,  # Only merge tables on consecutive pages
+    max_width_difference=2,  # Column count tolerance
+    header_sim_strict=0.6,  # Threshold for repeated header detection
+    stitch_separator="\n",  # Join character for split content
 )
 
 doc = stitch_tables(doc, config=config)
@@ -110,6 +110,7 @@ from typing import Any, List
 from table_stitcher import TableStitcher, MultiPageConfig, TableMeta, LogicalTable
 from table_stitcher.adapters.base import TableStitcherAdapter
 
+
 class MyParserAdapter:
     def extract(self, doc, cfg: MultiPageConfig) -> List[TableMeta]:
         """Read tables from your document format into TableMeta objects."""
@@ -118,6 +119,7 @@ class MyParserAdapter:
     def inject(self, doc, logical_tables: List[LogicalTable]):
         """Write merged results back into your document format."""
         ...
+
 
 stitcher = TableStitcher(adapter=MyParserAdapter())
 doc = stitcher.stitch(doc)
@@ -220,7 +222,13 @@ from typing import Any, List
 import pandas as pd
 from table_stitcher import TableStitcher, MultiPageConfig, TableMeta, LogicalTable
 from table_stitcher.adapters.base import TableStitcherAdapter
-from table_stitcher.merger import tokenize, normalize_col_name, is_numeric_like_colnames, first_row_has_number
+from table_stitcher.merger import (
+    tokenize,
+    normalize_col_name,
+    is_numeric_like_colnames,
+    first_row_has_number,
+)
+
 
 class MyParserAdapter:
     def extract(self, doc: Any, cfg: MultiPageConfig) -> List[TableMeta]:
@@ -243,32 +251,32 @@ class MyParserAdapter:
             # 4. Tokenize first row (fallback similarity signal)
             first_row_tokens = set()
             if df.shape[0] > 0:
-                first_row_tokens = tokenize(
-                    " ".join(str(x) for x in df.iloc[0].tolist())
-                )
+                first_row_tokens = tokenize(" ".join(str(x) for x in df.iloc[0].tolist()))
 
             # 5. Classify: is_headerless, is_header_orphan, is_data_orphan
             raw_columns = [str(c) for c in df.columns]
-            is_headerless = df.attrs.get('is_headerless', False)
+            is_headerless = df.attrs.get("is_headerless", False)
 
-            tables_meta.append(TableMeta(
-                idx=idx,
-                df=df,
-                start_page=start_page,
-                pages=pages,
-                width=df.shape[1],
-                header_tokens=header_tokens,
-                first_row_tokens=first_row_tokens,
-                raw_columns=raw_columns,
-                vert_center=None,       # Set if bbox available
-                vert_top=None,          # Normalized 0-1, 0=top of page
-                vert_bottom=None,       # Normalized 0-1, 1=bottom of page
-                is_header_orphan=False, # True if headers-only, no/few data rows
-                is_data_orphan=False,   # True if data-only, no real headers
-                numeric_like_cols=is_numeric_like_colnames(raw_columns),
-                row_count=df.shape[0],
-                is_headerless=is_headerless,
-            ))
+            tables_meta.append(
+                TableMeta(
+                    idx=idx,
+                    df=df,
+                    start_page=start_page,
+                    pages=pages,
+                    width=df.shape[1],
+                    header_tokens=header_tokens,
+                    first_row_tokens=first_row_tokens,
+                    raw_columns=raw_columns,
+                    vert_center=None,  # Set if bbox available
+                    vert_top=None,  # Normalized 0-1, 0=top of page
+                    vert_bottom=None,  # Normalized 0-1, 1=bottom of page
+                    is_header_orphan=False,  # True if headers-only, no/few data rows
+                    is_data_orphan=False,  # True if data-only, no real headers
+                    numeric_like_cols=is_numeric_like_colnames(raw_columns),
+                    row_count=df.shape[0],
+                    is_headerless=is_headerless,
+                )
+            )
         return tables_meta
 
     def inject(self, doc: Any, logical_tables: List[LogicalTable]) -> Any:
@@ -286,6 +294,7 @@ class MyParserAdapter:
                 doc.tables[sat_idx].merged_into = anchor_idx
 
         return doc
+
 
 # Use it:
 stitcher = TableStitcher(adapter=MyParserAdapter())
@@ -336,6 +345,7 @@ except StitchingError as e:
 
 ```python
 import logging
+
 logging.getLogger("table_stitcher").setLevel(logging.INFO)
 ```
 

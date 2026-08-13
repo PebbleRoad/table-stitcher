@@ -104,9 +104,9 @@ A few structural constants live at the top of `docling.py` rather than
 in `MultiPageConfig`:
 
 ```python
-_MAX_HEADER_CELL_LEN = 30    # header cells typically short; data cells longer
-_DATA_PATTERNS            # regex list for "this cell is data, not header"
-_AUTO_COLNAME_RE          # "Column_N" / "Unnamed: N" parser placeholders
+_MAX_HEADER_CELL_LEN = 30  # header cells typically short; data cells longer
+_DATA_PATTERNS  # regex list for "this cell is data, not header"
+_AUTO_COLNAME_RE  # "Column_N" / "Unnamed: N" parser placeholders
 ```
 
 These are **adapter-intrinsic** — tuning them changes how the adapter

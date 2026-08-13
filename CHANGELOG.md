@@ -7,6 +7,22 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-08-13
+
+### Fixed
+
+- **Duplicate header labels crashed the multipage merge** (`merger.py`).
+  Extracted headers that repeat a label — e.g. SEC 13F voting-authority
+  triplets where TableFormer emits `COLUMN 8` three times — made
+  `_build_generic_merged_table` raise `ValueError: Reindexing only valid
+  with uniquely valued Index objects`, because `pd.concat` cannot align
+  fragments on a non-unique column Index. Downstream consumers that
+  fail-soft on the error silently kept a degraded table set for the whole
+  document. Fragments are now merged under positionally deduped labels
+  (collision-safe against pre-existing `X.1`-style names) and the original
+  duplicated labels are restored on the merged output, matching how
+  single-fragment tables pass through untouched.
+
 ## [0.4.3] — 2026-06-11
 
 ### Fixed

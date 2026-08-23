@@ -223,6 +223,18 @@ def _extract_y_bounds_from_prov(prov_list: list[Any]) -> Optional[tuple[float, f
     return None
 
 
+def _first_page_no(prov: Any) -> Optional[int]:
+    """Resolved page number of the first prov entry carrying one, else None."""
+    if prov is None:
+        return None
+    entries = prov if isinstance(prov, list) else [prov]
+    for p in entries:
+        page_no = getattr(p, "page_no", None)
+        if page_no is not None:
+            return page_no
+    return None
+
+
 def _resolve_page_height(prov_list: list[Any], doc: Any, fallback: float = 842.0) -> float:
     """
     Look up the actual page height for the first prov entry from the document.
@@ -421,7 +433,7 @@ def _extract_original_header_rows(
 
 def _index_member_rows(
     member_data: list[Optional[TableData]],
-) -> dict[tuple, list[list[TableCell]]]:
+) -> dict[tuple, list[tuple[int, list[TableCell]]]]:
     """
     Index every member fragment's original grid rows by their expanded
     text-vector, for col_span reconstruction during injection.
@@ -440,17 +452,24 @@ def _index_member_rows(
     across the value columns. (The anchor's own header rows are reconstructed
     separately and never looked up here.) Values are buckets because a row can
     legitimately repeat; identical text-vectors imply identical span structure,
-    so any occurrence is interchangeable.
+    but NOT identical geometry — re-emitted cells carry their source bbox, so
+    occurrences are not interchangeable. Buckets are filled in fragment (page)
+    order and popped FIFO, which aligns the k-th DataFrame occurrence with the
+    k-th source occurrence because the merged DataFrame preserves fragment
+    concatenation order.
+
+    Bucket entries are ``(fragment_idx, row)`` pairs so the re-emitted row's
+    page association can be recorded (``fragment_idx`` indexes ``member_data``).
     """
-    index: dict[tuple, list[list[TableCell]]] = {}
-    for data in member_data:
+    index: dict[tuple, list[tuple[int, list[TableCell]]]] = {}
+    for frag_idx, data in enumerate(member_data):
         if not data or not data.grid:
             continue
         for row in data.grid:
             if not row:
                 continue
             key = tuple((getattr(c, "text", "") or "") if c else "" for c in row)
-            index.setdefault(key, []).append(row)
+            index.setdefault(key, []).append((frag_idx, row))
     return index
 
 
@@ -458,7 +477,9 @@ def _reemit_body_row(
     orig_row: list[TableCell], table_row_idx: int, has_row_headers: bool
 ) -> tuple[list[TableCell], list[TableCell]]:
     """
-    Re-emit an original grid body row at a new row offset, preserving col_span.
+    Re-emit an original grid body row at a new row offset, preserving col_span
+    and the source cell's bbox (page-local coordinates; see the merged table's
+    prov for page association).
 
     Returns ``(grid_row, distinct_cells)`` where ``grid_row`` repeats each
     spanning cell across the columns it covers (Docling grid convention) and
@@ -480,6 +501,7 @@ def _reemit_body_row(
             col_span = getattr(cell, "col_span", 1) or 1
             new_cell = TableCell(
                 text=getattr(cell, "text", "") or "",
+                bbox=getattr(cell, "bbox", None),
                 row_span=1,
                 col_span=col_span,
                 column_header=False,
@@ -539,6 +561,8 @@ def _dataframe_to_docling_data(
     df: pd.DataFrame,
     original_data: Optional[TableData] = None,
     member_data: Optional[list[Optional[TableData]]] = None,
+    member_pages: Optional[list[Optional[int]]] = None,
+    row_pages_out: Optional[dict[int, int]] = None,
 ) -> TableData:
     """
     Converts a pandas DataFrame back into Docling's TableData structure.
@@ -554,6 +578,13 @@ def _dataframe_to_docling_data(
     re-emitted from their original grid cells, preserving col_span. Rows the
     merger transformed (stitched continuations, folded overflow) fall back to a
     flat 1x1 rebuild from the DataFrame.
+
+    When ``row_pages_out`` is provided (with ``member_pages`` aligned
+    index-for-index with ``member_data``), it is filled with the page
+    association for rows that carry geometry: grid row index -> resolved
+    page_no. Header rows reused from the anchor map to the anchor's page
+    (``member_pages[0]``); re-emitted body rows map to their source fragment's
+    page; flat-rebuilt rows get no entry (see ``LogicalTable.row_pages``).
     """
     if df.empty:
         cols = list(df.columns) if len(df.columns) > 0 else ["Column_0"]
@@ -588,6 +619,13 @@ def _dataframe_to_docling_data(
         num_header_rows = len(orig_header_rows)
         grid: list[list[TableCell]] = list(orig_header_rows)
         table_cells: list[TableCell] = list(orig_header_cells)
+        # Reused header cells keep the anchor's geometry, so they map to the
+        # anchor's page (member_pages[0] — the anchor is always members[0]).
+        if row_pages_out is not None and member_pages:
+            anchor_page = member_pages[0]
+            if anchor_page is not None:
+                for h_idx in range(num_header_rows):
+                    row_pages_out[h_idx] = anchor_page
     else:
         # Fall back to building flat 1x1 header from DataFrame columns
         num_header_rows = 1
@@ -639,7 +677,7 @@ def _dataframe_to_docling_data(
         # adjacent values are never fused.
         bucket = body_index.get(tuple(row_vals))
         if bucket:
-            orig_row = bucket.pop(0)
+            frag_idx, orig_row = bucket.pop(0)
             if header_sigs and _is_reprinted_header(orig_row, header_sigs):
                 # Reprinted header from a continuation page — already present as
                 # the header block; drop it instead of duplicating into the body.
@@ -648,6 +686,10 @@ def _dataframe_to_docling_data(
             grid_row, distinct = _reemit_body_row(orig_row, table_row_idx, has_row_headers)
             grid.append(grid_row)
             table_cells.extend(distinct)
+            if row_pages_out is not None and member_pages:
+                page = member_pages[frag_idx] if frag_idx < len(member_pages) else None
+                if page is not None:
+                    row_pages_out[table_row_idx] = page
             emitted += 1
             continue
 
@@ -1051,12 +1093,25 @@ class DoclingAdapter:
                 member_data = [
                     table_snapshots[m]["data"] for m in lt.members if m in table_snapshots
                 ]
+                # Page per fragment, same filter as member_data so indices stay
+                # aligned. Feeds LogicalTable.row_pages: resolved page_no rather
+                # than a prov index, so the map survives downstream prov
+                # manipulation by consumers.
+                member_pages = [
+                    _first_page_no(table_snapshots[m]["prov"])
+                    for m in lt.members
+                    if m in table_snapshots
+                ]
 
+                row_pages: dict[int, int] = {}
                 anchor_table.data = _dataframe_to_docling_data(
                     lt.df,
                     original_data=original_data,
                     member_data=member_data,
+                    member_pages=member_pages,
+                    row_pages_out=row_pages,
                 )
+                lt.row_pages = row_pages
 
                 for satellite_idx in lt.members[1:]:
                     satellite_table = doc.tables[satellite_idx]

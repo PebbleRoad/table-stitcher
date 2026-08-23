@@ -163,3 +163,15 @@ class LogicalTable:
     merge_reason: str = ""
     merge_traces: list[MergeTrace] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    row_pages: dict[int, int] = field(default_factory=dict)
+    """
+    Page association for the merged table's cell geometry, keyed by grid row
+    index (an index into the injected ``TableData.grid``, header rows
+    included). The value is the resolved ``page_no`` the row's cell bboxes
+    (when present) are valid on. A missing key means the row has no single
+    source page: it was transformed by the merger (stitched continuation,
+    folded overflow — which can legitimately span two pages) and carries no
+    geometry, or its source fragment exposed no page number. Header rows
+    preserved from the anchor map to the anchor's page. Populated during
+    injection; empty for tables that were not merged.
+    """

@@ -7,6 +7,39 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cell bounding boxes were dropped on multi-page merge**
+  (`adapters/docling.py`). When N per-page fragments merged into one logical
+  table, every `TableCell` in the injected result came back with `bbox=None`,
+  breaking word-level grounding for multi-page tables. `_reemit_body_row`
+  rebuilt each untouched body row's cells without copying the source cell's
+  `bbox`; it is now carried across, so untouched body rows — the large
+  majority on a clean multi-page table — keep their geometry. Header rows
+  reused from the anchor already preserved theirs; rows the merger transformed
+  (stitched continuations, folded overflow) genuinely have none and stay
+  `bbox=None`. The FIFO alignment between repeated identical-text rows and
+  their source occurrences is now a documented invariant: it is what guarantees
+  a repeated row gets its own page's boxes, not a sibling's.
+
+### Added
+
+- **Row-level page association for restored geometry** (`models.py`,
+  `adapters/docling.py`). A merged table's `prov` lists all N source pages, but
+  pages share one coordinate space, so a restored `bbox` alone cannot say which
+  page it belongs to. `LogicalTable.row_pages` now maps grid row index (header
+  rows included) to the resolved `page_no` the row's cell boxes are valid on —
+  resolved page numbers rather than prov indices, so the map survives
+  downstream prov manipulation. A missing key means the row has no single
+  source page (transformed rows, which carry no geometry). Recorded during
+  injection, the only point where each row's source fragment is known; a
+  consumer cannot reconstruct the mapping after the fact.
+- **`TableStitcher.last_logical_tables`** exposes the `LogicalTable` results of
+  the most recent `stitch()` call — previously discarded after injection,
+  which would have left `row_pages` unreachable through the public API.
+  Consumers needing the map should instantiate `TableStitcher` directly; the
+  `stitch_tables()` convenience function does not expose the stitcher instance.
+
 ## [0.4.4] — 2026-08-13
 
 ### Fixed

@@ -388,6 +388,158 @@ class TestBodySpanPreservation:
         assert all(cell.col_span == 1 for cell in td.grid[1])
 
 
+class TestBboxPreservation:
+    """Re-emitted body rows must carry their source cells' bounding boxes.
+
+    The merge rebuilds the anchor's TableData from the merged DataFrame; rows
+    the merger left untouched are re-emitted from the original grid cells.
+    Dropping bbox there loses word-level grounding for every multi-page table.
+    """
+
+    @staticmethod
+    def _cell(text, r, c, *, header=False, bbox=None):
+        return TableCell(
+            text=text,
+            bbox=bbox,
+            row_span=1,
+            col_span=1,
+            column_header=header,
+            row_header=False,
+            start_row_offset_idx=r,
+            end_row_offset_idx=r + 1,
+            start_col_offset_idx=c,
+            end_col_offset_idx=c + 1,
+        )
+
+    def _fragment_with_bboxes(self) -> TableData:
+        from docling_core.types.doc import BoundingBox
+
+        c = self._cell
+        h = [c("Name", 0, 0, header=True), c("Value", 0, 1, header=True)]
+        r1 = [
+            c("alpha", 1, 0, bbox=BoundingBox(l=10, t=100, r=60, b=110)),
+            c("1", 1, 1, bbox=BoundingBox(l=70, t=100, r=90, b=110)),
+        ]
+        return TableData(num_rows=2, num_cols=2, table_cells=h + r1, grid=[h, r1])
+
+    def test_reemitted_rows_keep_bbox(self):
+        original = self._fragment_with_bboxes()
+        merged_df = pd.DataFrame([["alpha", "1"]], columns=["Name", "Value"])
+
+        td = _dataframe_to_docling_data(merged_df, original_data=original, member_data=[original])
+
+        body_row = td.grid[1]
+        assert body_row[0].bbox is not None
+        assert body_row[0].bbox.l == 10 and body_row[0].bbox.t == 100
+        assert body_row[1].bbox is not None
+        assert body_row[1].bbox.l == 70
+
+    def test_flat_rebuild_rows_have_no_bbox(self):
+        """Transformed rows (no member-row match) have no geometry to carry."""
+        original = self._fragment_with_bboxes()
+        merged_df = pd.DataFrame([["alpha (stitched)", "1"]], columns=["Name", "Value"])
+
+        td = _dataframe_to_docling_data(merged_df, original_data=original, member_data=[original])
+
+        assert all(cell.bbox is None for cell in td.grid[1])
+
+
+class TestRowPageMap:
+    """row_pages: grid row index -> resolved page_no for restored geometry.
+
+    A merged table's prov lists all N source pages, but pages share one
+    coordinate space, so a restored bbox is ambiguous without a per-row page
+    association. The map is recorded at merge time (the only point where each
+    row's source fragment is known) and keyed by grid row index — resolved
+    page_no, not prov index, so it survives downstream prov manipulation.
+    A missing key is the honest signal for a transformed row.
+    """
+
+    @staticmethod
+    def _cell(text, r, c, *, header=False):
+        return TableCell(
+            text=text,
+            row_span=1,
+            col_span=1,
+            column_header=header,
+            row_header=False,
+            start_row_offset_idx=r,
+            end_row_offset_idx=r + 1,
+            start_col_offset_idx=c,
+            end_col_offset_idx=c + 1,
+        )
+
+    def _one_col_fragment(self, texts: list[str], *, header: str | None = None) -> TableData:
+        rows = []
+        r = 0
+        if header is not None:
+            rows.append([self._cell(header, 0, 0, header=True)])
+            r = 1
+        for i, t in enumerate(texts):
+            rows.append([self._cell(t, r + i, 0)])
+        flat = [c for row in rows for c in row]
+        return TableData(num_rows=len(rows), num_cols=1, table_cells=flat, grid=rows)
+
+    def test_rebuild_maps_rows_to_source_pages(self):
+        anchor = self._one_col_fragment(["alpha"], header="Name")
+        satellite = self._one_col_fragment(["beta"])
+        merged_df = pd.DataFrame([["alpha"], ["beta"], ["gamma (stitched)"]], columns=["Name"])
+
+        row_pages: dict[int, int] = {}
+        _dataframe_to_docling_data(
+            merged_df,
+            original_data=anchor,
+            member_data=[anchor, satellite],
+            member_pages=[1, 2],
+            row_pages_out=row_pages,
+        )
+
+        # Grid: row 0 = anchor header, row 1 = alpha (page 1),
+        # row 2 = beta (page 2), row 3 = transformed -> no key.
+        assert row_pages == {0: 1, 1: 1, 2: 2}
+
+    def test_unknown_member_page_yields_no_key(self):
+        anchor = self._one_col_fragment(["alpha"], header="Name")
+        satellite = self._one_col_fragment(["beta"])
+        merged_df = pd.DataFrame([["alpha"], ["beta"]], columns=["Name"])
+
+        row_pages: dict[int, int] = {}
+        _dataframe_to_docling_data(
+            merged_df,
+            original_data=anchor,
+            member_data=[anchor, satellite],
+            member_pages=[1, None],
+            row_pages_out=row_pages,
+        )
+
+        assert row_pages == {0: 1, 1: 1}  # beta's fragment has no page -> no key
+
+    def test_inject_populates_logical_table_row_pages(self):
+        doc = _build_doc_with_tables(2)
+        doc.tables[0].prov = [SimpleNamespace(page_no=1, bbox=None)]
+        doc.tables[1].prov = [SimpleNamespace(page_no=2, bbox=None)]
+
+        # Rows V0 / V1 match the fragments' original body rows untouched.
+        merged_df = pd.DataFrame({"H0": ["V0", "V1"]})
+        lt = LogicalTable(0, [0, 1], [1, 2], merged_df)
+
+        adapter = DoclingAdapter()
+        adapter.inject(doc, [lt])
+
+        # Grid row 0 = anchor header (page 1), row 1 = V0 (page 1),
+        # row 2 = V1 (page 2).
+        assert lt.row_pages == {0: 1, 1: 1, 2: 2}
+
+    def test_single_member_table_has_empty_row_pages(self):
+        doc = _build_doc_with_tables(1)
+        lt = LogicalTable(0, [0], [1], pd.DataFrame({"H0": ["V0"]}))
+
+        adapter = DoclingAdapter()
+        adapter.inject(doc, [lt])
+
+        assert lt.row_pages == {}
+
+
 class TestReprintedHeaderDedup:
     """Reprinted continuation-page headers are dropped from the injected body,
     but column_header-flagged rows that don't match the header (Docling

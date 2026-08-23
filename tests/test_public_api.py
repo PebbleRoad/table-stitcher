@@ -81,3 +81,56 @@ def test_table_stitcher_class_signature():
 
 def test_stitching_error_is_exception():
     assert issubclass(table_stitcher.StitchingError, Exception)
+
+
+def test_last_logical_tables_exposed_after_stitch():
+    """`TableStitcher.last_logical_tables` surfaces the merge results.
+
+    `stitch()` returns only the document, but grounding consumers need the
+    per-table merge results — notably `LogicalTable.row_pages`, filled in
+    during injection. The stitcher keeps its most recent results reachable.
+    """
+    import pandas as pd
+
+    from table_stitcher.merger import is_numeric_like_colnames, tokenize
+    from table_stitcher.models import TableMeta
+
+    def _meta(idx: int, start_page: int, *, headerless: bool) -> TableMeta:
+        df = pd.DataFrame({"Name": ["Alice"], "Age": ["30"]})
+        return TableMeta(
+            idx=idx,
+            df=df,
+            start_page=start_page,
+            pages=[start_page],
+            width=df.shape[1],
+            header_tokens=tokenize(" ".join(str(c) for c in df.columns)),
+            first_row_tokens=tokenize(" ".join(str(x) for x in df.iloc[0].tolist())),
+            raw_columns=[str(c) for c in df.columns],
+            vert_center=None,
+            vert_top=None,
+            vert_bottom=None,
+            is_header_orphan=False,
+            is_data_orphan=False,
+            numeric_like_cols=is_numeric_like_colnames([str(c) for c in df.columns]),
+            row_count=df.shape[0],
+            is_headerless=headerless,
+        )
+
+    class _StubAdapter:
+        def extract(self, doc, config):
+            return [_meta(0, 1, headerless=False), _meta(1, 2, headerless=True)]
+
+        def inject(self, doc, logical_tables):
+            for lt in logical_tables:
+                lt.row_pages = {0: 1}
+            return doc
+
+    stitcher = table_stitcher.TableStitcher(_StubAdapter())
+    assert stitcher.last_logical_tables == []
+
+    stitcher.stitch(object())
+
+    assert len(stitcher.last_logical_tables) == 1
+    lt = stitcher.last_logical_tables[0]
+    assert lt.members == [0, 1]
+    assert lt.row_pages == {0: 1}

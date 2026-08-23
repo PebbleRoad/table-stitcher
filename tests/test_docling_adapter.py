@@ -3,6 +3,7 @@ Tests for the Docling adapter — DataFrame conversion, injection, and pruning.
 """
 
 from types import SimpleNamespace
+from typing import Optional
 
 import pandas as pd
 import pytest
@@ -469,7 +470,7 @@ class TestRowPageMap:
             end_col_offset_idx=c + 1,
         )
 
-    def _one_col_fragment(self, texts: list[str], *, header: str | None = None) -> TableData:
+    def _one_col_fragment(self, texts: list[str], *, header: Optional[str] = None) -> TableData:
         rows = []
         r = 0
         if header is not None:

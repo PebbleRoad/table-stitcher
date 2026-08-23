@@ -77,6 +77,12 @@ class TableStitcher:
         self.logger = logging.getLogger("table_stitcher")
         self.adapter = adapter
         self.config = config or MultiPageConfig()
+        self.last_logical_tables: list[LogicalTable] = []
+        """
+        The ``LogicalTable`` results of the most recent ``stitch()`` call,
+        including per-row page associations (``LogicalTable.row_pages``)
+        populated during injection. Reset at the start of every ``stitch()``.
+        """
         self._validate_config()
 
     # -------------------------------------------------------------------------
@@ -164,6 +170,8 @@ class TableStitcher:
         Returns:
             The document with merged tables.
         """
+        self.last_logical_tables = []
+
         if doc is None:
             if raise_on_error:
                 raise StitchingError("Input document is None")
@@ -212,6 +220,10 @@ class TableStitcher:
             if raise_on_error:
                 raise StitchingError(f"Failed to merge tables: {e}") from e
             return doc
+
+        # Exposed for consumers needing per-table merge results — notably
+        # LogicalTable.row_pages, which injection fills in below.
+        self.last_logical_tables = logical_tables
 
         multi_page_tables = [lt for lt in logical_tables if len(lt.pages) > 1]
 

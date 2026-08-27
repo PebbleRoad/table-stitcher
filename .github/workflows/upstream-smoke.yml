@@ -10,8 +10,9 @@ name: upstream-smoke
 
 on:
   schedule:
-    # Daily at 06:17 UTC. Off-hour to avoid contention with weekday CI bursts.
-    - cron: "17 6 * * *"
+    # Weekly, Monday 06:17 UTC. macOS minutes bill at ~10x Linux; daily was the
+    # single largest Actions line item in the org.
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 jobs:

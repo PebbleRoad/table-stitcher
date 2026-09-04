@@ -7,6 +7,8 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-04
+
 ### Fixed
 
 - **Numeric singleton rows were folded into the preceding row during
@@ -254,7 +256,10 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 Initial release.
 
-[Unreleased]: https://github.com/pebbleroad/table-stitcher/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pebbleroad/table-stitcher/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/pebbleroad/table-stitcher/releases/tag/v0.5.1
+[0.5.0]: https://github.com/pebbleroad/table-stitcher/releases/tag/v0.5.0
+[0.4.0]: https://github.com/pebbleroad/table-stitcher/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pebbleroad/table-stitcher/releases/tag/v0.3.0
 [0.2.0]: https://github.com/pebbleroad/table-stitcher/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pebbleroad/table-stitcher/releases/tag/v0.1.0

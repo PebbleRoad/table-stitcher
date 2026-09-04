@@ -169,6 +169,26 @@ def is_empty_value(val: Any) -> bool:
     return False
 
 
+_NUMERIC_ONLY_RE = re.compile(
+    r"""^\s*
+    [+-]?\s*
+    (?:
+        \(\s*[$€£¥]?\s*\d[\d,\s]*(?:\.\d+)?\s*\)
+        |
+        [$€£¥]?\s*\d[\d,\s]*(?:\.\d+)?\s*%?
+    )
+    \s*$""",
+    re.VERBOSE,
+)
+
+
+def _is_numeric_only_value(val: Any) -> bool:
+    """True when ``val`` is a standalone formatted number, not wrapped text."""
+    if is_empty_value(val) or isinstance(val, bool):
+        return False
+    return bool(_NUMERIC_ONLY_RE.fullmatch(str(val)))
+
+
 def clean_malformed_header(col: str) -> str:
     """Fix headers like 'Name.Name' -> 'Name'."""
     col = str(col).strip()
@@ -412,6 +432,14 @@ def stitch_split_cells(df: pd.DataFrame, separator: str = "\n") -> pd.DataFrame:
 
             cont_idx = nonempty_idxs[0]
             cont_val = str(next_row_vals[cont_idx]).strip()
+
+            # A standalone number is a legitimate row in financial and
+            # statistical tables (often a subtotal or fair-value-only line),
+            # even when every other cell is blank. Folding it into the row
+            # above silently changes both the row count and the value.
+            if _is_numeric_only_value(cont_val):
+                break
+
             target_idx = cont_idx
 
             is_url = "://" in cont_val or cont_val.lower().startswith("http")
@@ -981,6 +1009,7 @@ def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> list[Logi
                 merge_reason="+".join(merge_reasons),
                 merge_traces=group_traces,
                 warnings=group_warnings,
+                demoted_numeric_header=state.meta_by_idx[members[0]].demoted_numeric_header,
             )
         )
 

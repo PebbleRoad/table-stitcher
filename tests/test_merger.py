@@ -729,6 +729,23 @@ class TestStitchSplitCells:
         assert out.shape == (1, 3)
         assert "rabbit hole" in out.iloc[0, 1]
 
+    @pytest.mark.parametrize("subtotal", ["29,581,200", 713044, "$1,234.50", "(9,876)"])
+    def test_numeric_singleton_row_is_not_folded(self, subtotal):
+        """Sparse numeric rows are values/subtotals, not wrapped cell text."""
+        df = pd.DataFrame(
+            [
+                ["340,000", "16,746,742", "13,066,200"],
+                ["", "", subtotal],
+            ],
+            columns=["Shares", "Cost", "Fair value"],
+        )
+
+        out = stitch_split_cells(df)
+
+        assert out.shape == (2, 3)
+        assert out.iloc[0, 2] == "13,066,200"
+        assert out.iloc[1, 2] == subtotal
+
     def test_single_nonempty_cell_folds_into_previous_row(self):
         df = pd.DataFrame(
             [

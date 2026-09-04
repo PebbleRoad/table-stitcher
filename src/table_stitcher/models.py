@@ -138,6 +138,8 @@ class TableMeta:
     the adapter could not place the table in reading order (e.g. an orphan
     table), in which case the intervening-content guard is skipped for it.
     """
+    demoted_numeric_header: bool = False
+    """Whether an upstream numeric header row was reclassified as data."""
 
 
 @dataclass
@@ -174,4 +176,10 @@ class LogicalTable:
     geometry, or its source fragment exposed no page number. Header rows
     preserved from the anchor map to the anchor's page. Populated during
     injection; empty for tables that were not merged.
+    """
+    demoted_numeric_header: bool = False
+    """
+    Whether the anchor fragment's numeric first grid row was classified as data
+    rather than a real header. Adapters use this to avoid re-emitting an
+    upstream header flag that the extraction phase deliberately demoted.
     """

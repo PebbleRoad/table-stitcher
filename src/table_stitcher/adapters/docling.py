@@ -397,6 +397,20 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
 
     df.attrs["pre_header_rows"] = pre_header_rows
     df.attrs["is_headerless"] = is_headerless
+    first_content_grid_row = next(
+        (
+            row
+            for row in grid
+            if row and any(str(getattr(cell, "text", "") or "").strip() for cell in row if cell)
+        ),
+        [],
+    )
+    df.attrs["demoted_numeric_header"] = bool(
+        is_headerless
+        and non_empty_cells
+        and all(_looks_like_data(cell) for cell in non_empty_cells)
+        and any(getattr(cell, "column_header", False) for cell in first_content_grid_row if cell)
+    )
     return df
 
 
@@ -563,6 +577,7 @@ def _dataframe_to_docling_data(
     member_data: Optional[list[Optional[TableData]]] = None,
     member_pages: Optional[list[Optional[int]]] = None,
     row_pages_out: Optional[dict[int, int]] = None,
+    demoted_numeric_header: bool = False,
 ) -> TableData:
     """
     Converts a pandas DataFrame back into Docling's TableData structure.
@@ -586,7 +601,7 @@ def _dataframe_to_docling_data(
     (``member_pages[0]``); re-emitted body rows map to their source fragment's
     page; flat-rebuilt rows get no entry (see ``LogicalTable.row_pages``).
     """
-    if df.empty:
+    if df.empty and not demoted_numeric_header:
         cols = list(df.columns) if len(df.columns) > 0 else ["Column_0"]
         header_cells = []
         for j, col_name in enumerate(cols):
@@ -610,11 +625,21 @@ def _dataframe_to_docling_data(
         )
 
     # --- Try to reuse original header rows (preserves rowspan/colspan) ---
-    orig_header_rows, orig_header_cells = _extract_original_header_rows(original_data)
+    # When extraction classified the anchor as headerless, an upstream reader
+    # merely misflagged its first data row as a header. Do not preserve that
+    # flag or synthesize generic DataFrame-column headers during injection.
+    if demoted_numeric_header:
+        orig_header_rows, orig_header_cells = [], []
+    else:
+        orig_header_rows, orig_header_cells = _extract_original_header_rows(original_data)
 
     num_cols = len(df.columns)
 
-    if orig_header_rows:
+    if demoted_numeric_header:
+        num_header_rows = 0
+        grid = []
+        table_cells = []
+    elif orig_header_rows:
         # Use original header rows as-is
         num_header_rows = len(orig_header_rows)
         grid: list[list[TableCell]] = list(orig_header_rows)
@@ -950,6 +975,7 @@ class DoclingAdapter:
             continuation_content = []
             pre_header_rows = df.attrs.get("pre_header_rows", [])
             is_headerless = df.attrs.get("is_headerless", False)
+            demoted_numeric_header = df.attrs.get("demoted_numeric_header", False)
 
             if pre_header_rows:
                 for row in pre_header_rows:
@@ -1008,6 +1034,7 @@ class DoclingAdapter:
                     continuation_content=continuation_content,
                     is_headerless=is_headerless,
                     content_before=content_before_map.get(idx),
+                    demoted_numeric_header=demoted_numeric_header,
                 )
             )
 
@@ -1110,6 +1137,7 @@ class DoclingAdapter:
                     member_data=member_data,
                     member_pages=member_pages,
                     row_pages_out=row_pages,
+                    demoted_numeric_header=lt.demoted_numeric_header,
                 )
                 lt.row_pages = row_pages
 

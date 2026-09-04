@@ -7,6 +7,18 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Numeric singleton rows were folded into the preceding row during
+  multi-page stitching** (`merger.py`). Sparse numeric rows such as financial
+  subtotals and fair-value-only lines are now preserved as independent rows;
+  text-only wrapped-cell continuations still fold as before.
+- **Headerless fragments could duplicate their first numeric row during
+  Docling injection** (`adapters/docling.py`). When extraction demotes an
+  upstream reader's erroneous `column_header` flag, injection now emits that
+  row exactly once as ordinary data instead of preserving it as a header and
+  repeating it in the body.
+
 ## [0.5.0] — 2026-08-23
 
 ### Fixed

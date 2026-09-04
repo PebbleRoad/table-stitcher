@@ -718,6 +718,47 @@ class TestInjection:
         # Data rows come from the merged DataFrame
         assert doc.tables[0].data.grid[1][0].text == "Alice"
 
+    def test_headerless_anchor_does_not_reemit_misflagged_numeric_header(self):
+        """A demoted upstream header row is emitted once, as ordinary data."""
+        doc = _build_doc_with_tables(2)
+        numeric_row = [
+            TableCell(
+                text=value,
+                row_span=1,
+                col_span=1,
+                column_header=True,
+                row_header=False,
+                start_row_offset_idx=0,
+                end_row_offset_idx=1,
+                start_col_offset_idx=col,
+                end_col_offset_idx=col + 1,
+            )
+            for col, value in enumerate(["340,000", "16,746,742", "13,066,200"])
+        ]
+        doc.tables[0].data = TableData(
+            num_rows=1,
+            num_cols=3,
+            table_cells=numeric_row,
+            grid=[numeric_row],
+        )
+        merged_df = pd.DataFrame(
+            [
+                ["340,000", "16,746,742", "13,066,200"],
+                ["", "", "29,581,200"],
+            ],
+            columns=["Column_0", "Column_1", "Column_2"],
+        )
+
+        DoclingAdapter().inject(
+            doc,
+            [LogicalTable(0, [0, 1], [4, 5], merged_df, demoted_numeric_header=True)],
+        )
+
+        grid = doc.tables[0].data.grid
+        assert doc.tables[0].data.num_rows == 2
+        assert [[cell.text for cell in row] for row in grid] == merged_df.values.tolist()
+        assert not any(cell.column_header for row in grid for cell in row)
+
     def test_satellite_refs_pruned_from_body(self):
         """Satellite table references should be removed from doc.body.children."""
         doc = _build_doc_with_tables(3)
@@ -955,6 +996,24 @@ def _mk_table(rows):
 
 
 class TestHeaderlessDetection:
+    def test_numeric_reader_header_is_marked_as_demoted_data(self):
+        grid = [
+            [
+                SimpleNamespace(text=value, column_header=True)
+                for value in ["340,000", "16,746,742", "13,066,200"]
+            ],
+            [
+                SimpleNamespace(text="", column_header=False),
+                SimpleNamespace(text="", column_header=False),
+                SimpleNamespace(text="29,581,200", column_header=False),
+            ],
+        ]
+
+        df = _grid_to_dataframe(SimpleNamespace(data=SimpleNamespace(grid=grid)), doc=None)
+
+        assert df.attrs["is_headerless"] is True
+        assert df.attrs["demoted_numeric_header"] is True
+
     def test_comma_separated_decimal_flags_headerless(self):
         # Retirement-portfolio pattern: first row is data but one cell is a
         # comma-grouped dollar amount.

@@ -910,3 +910,102 @@ class TestInterveningContentGuard:
         b = self._benefit(1, 2, "Trip postponement", content_before=None)
         logical = merge_multipage_tables([a, b], MultiPageConfig())
         assert len(logical) == 1
+
+
+# ---------------------------------------------------------------------------
+# Row conservation on the orphan build path: every data row of every member
+# is emitted exactly once, under the header orphan's real column labels.
+# ---------------------------------------------------------------------------
+
+
+class TestOrphanRowConservation:
+    def test_header_orphan_rows_and_real_header_survive(self):
+        # Header orphan carrying one header-shaped body row ("Gender" section
+        # label) + a headerless data fragment. Previously the body row became
+        # the merged header and the real labels were discarded.
+        orphan_df = pd.DataFrame([["Gender", "", ""]], columns=["Variables", "With", "Without"])
+        data_df = pd.DataFrame(
+            [["Male", "40", "51"], ["Female", "30", "41"]],
+            columns=["Column_0", "Column_1", "Column_2"],
+        )
+        metas = [
+            _make_meta(idx=0, df=orphan_df, start_page=1, is_header_orphan=True),
+            _make_meta(idx=1, df=data_df, start_page=2, is_data_orphan=True, is_headerless=True),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert list(results[0].df.columns) == ["Variables", "With", "Without"]
+        assert results[0].df.values.tolist() == [
+            ["Gender", "", ""],
+            ["Male", "40", "51"],
+            ["Female", "30", "41"],
+        ]
+
+    def test_single_member_header_orphan_keeps_its_rows(self):
+        # A small all-text table (header + two word rows) is flagged a header
+        # orphan; on its own it must round-trip unchanged.
+        df = pd.DataFrame([["Alice", "CEO"], ["Bob", "CTO"]], columns=["Name", "Role"])
+        metas = [_make_meta(idx=0, df=df, start_page=1, is_header_orphan=True)]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert list(results[0].df.columns) == ["Name", "Role"]
+        assert results[0].df.values.tolist() == [["Alice", "CEO"], ["Bob", "CTO"]]
+
+    def test_promoted_data_row_of_headed_member_is_reemitted(self):
+        # The data orphan's first grid row was promoted to column labels but
+        # shares no vocabulary with the anchor header — it is data, so the
+        # orphan build re-emits it ahead of the member's body.
+        orphan_df = pd.DataFrame(columns=["Name", "Status"])
+        member_df = pd.DataFrame([["Bob 2", "Active"]], columns=["Alice", "Pending"])
+        metas = [
+            _make_meta(idx=0, df=orphan_df, start_page=1, is_header_orphan=True),
+            _make_meta(idx=1, df=member_df, start_page=2, is_data_orphan=True),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert list(results[0].df.columns) == ["Name", "Status"]
+        assert results[0].df.values.tolist() == [["Alice", "Pending"], ["Bob 2", "Active"]]
+
+    def test_reprinted_header_of_headed_member_is_not_duplicated(self):
+        orphan_df = pd.DataFrame(columns=["Name", "Value", "Status"])
+        member_df = pd.DataFrame([["Alice", "30", "OK"]], columns=["Name", "Value", "Status"])
+        metas = [
+            _make_meta(idx=0, df=orphan_df, start_page=1, is_header_orphan=True),
+            _make_meta(idx=1, df=member_df, start_page=2, is_data_orphan=True),
+        ]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert list(results[0].df.columns) == ["Name", "Value", "Status"]
+        assert results[0].df.values.tolist() == [["Alice", "30", "OK"]]
+
+
+class TestContinuationIntoEmptyCell:
+    """A sparse first row on a continuation page folds into the previous row.
+    When the target cell is empty the value must land there, not vanish."""
+
+    def test_generic_path_fills_empty_cell(self):
+        base = pd.DataFrame(
+            [["1", "10", "first"], ["2", "20", ""]], columns=["ID", "Amount", "Note"]
+        )
+        cont = pd.DataFrame([["3", "30", "third"]], columns=["Column_0", "Column_1", "Column_2"])
+        m1 = _make_meta(idx=1, df=cont, start_page=2, is_headerless=True)
+        m1.continuation_content = [{"col_idx": 2, "value": "tail of note"}]
+        metas = [_make_meta(idx=0, df=base, start_page=1), m1]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.values.tolist() == [
+            ["1", "10", "first"],
+            ["2", "20", "tail of note"],
+            ["3", "30", "third"],
+        ]
+
+    def test_orphan_path_fills_empty_cell(self):
+        orphan_df = pd.DataFrame([["Gender", "", ""]], columns=["Variables", "With", "Without"])
+        cont = pd.DataFrame([["Male", "40", "51"]], columns=["Column_0", "Column_1", "Column_2"])
+        m1 = _make_meta(idx=1, df=cont, start_page=2, is_headerless=True, is_data_orphan=True)
+        m1.continuation_content = [{"col_idx": 2, "value": "0.547"}]
+        metas = [_make_meta(idx=0, df=orphan_df, start_page=1, is_header_orphan=True), m1]
+        results = merge_multipage_tables(metas, MultiPageConfig())
+        assert len(results) == 1
+        assert list(results[0].df.columns) == ["Variables", "With", "Without"]
+        assert results[0].df.values.tolist() == [["Gender", "", "0.547"], ["Male", "40", "51"]]

@@ -56,6 +56,8 @@ _DATA_PATTERNS = [
         r"^[\d,]+$",  # grouped integer: "1,234,567"
         r"^\d+\.?\d*\s*\([\d,\s.]+\)",  # stat with range: "280 (176, 404)"
         r"^\d+\.?\d*\s*[xX×]\s*10",  # scientific: "7.0 x 10-7"
+        r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}",  # ISO date: "2009-03-10"
+        r"^[A-Z]{1,4}\d{3,}$",  # letter-digit identifier: "R200", "AB1234"
     ]
 ]
 
@@ -91,7 +93,7 @@ def _data_subshape(cell: str) -> Optional[str]:
         return "currency"
     if s.endswith("%"):
         return "percent"
-    if re.match(r"^\d{1,2}[/-]\d{1,2}", s):
+    if re.match(r"^(\d{1,2}|\d{4})[/-]\d{1,2}", s):
         return "date_like"
     if re.match(r"^\d+$", s):
         return "bare_int"
@@ -137,6 +139,76 @@ def _first_row_is_header_by_contrast(rows: list[list[str]]) -> bool:
 
     different = sum(1 for s in body_shapes if s != r1_shape)
     return different / len(body_shapes) >= 0.6
+
+
+def _shape_signature(cell: str) -> str:
+    """
+    Character-class signature of a cell: letters -> ``a``, digits -> ``9``,
+    whitespace -> a single space, anything else kept verbatim; runs collapse.
+    ``R200`` -> ``a9``, ``2009-03-10`` -> ``9-9-9``, ``Subject Number`` -> ``a a``.
+    Case-folded so OCR case drift does not split a class.
+    """
+    out: list[str] = []
+    for ch in str(cell).strip():
+        if ch.isdigit():
+            cls = "9"
+        elif ch.isalpha():
+            cls = "a"
+        elif ch.isspace():
+            cls = " "
+        else:
+            cls = ch
+        if not out or out[-1] != cls:
+            out.append(cls)
+    return "".join(out)
+
+
+def _signature_is_distinctive(sig: str) -> bool:
+    """A signature carrying a digit or punctuation class, not just words."""
+    return any(c not in ("a", " ") for c in sig)
+
+
+def _column_majority_signature(cells: list[str]) -> Optional[str]:
+    """Signature shared by more than half of the non-empty cells, else None."""
+    sigs = [_shape_signature(c) for c in cells if str(c).strip()]
+    if not sigs:
+        return None
+    best = max(set(sigs), key=sigs.count)
+    return best if sigs.count(best) * 2 > len(sigs) else None
+
+
+def _first_row_is_data_by_shape(rows: list[list[str]]) -> bool:
+    """
+    True when row 1 has the same cell shape as the body in every column it
+    fills, and at least one of those shapes is distinctive (carries digits
+    or punctuation). A header is structurally distinct from its body, so a
+    row that mirrors the body column-for-column — identifier over
+    identifiers, ISO date over ISO dates — is a data row whose header was
+    lost to the page break, even though none of its cells matches a data
+    pattern on its own.
+
+    Pure-word tables (``Name | Status`` over ``Smith | Active``) have no
+    distinctive column, so no claim is made and the row stays a header.
+    """
+    if len(rows) < 2:
+        return False
+    first = rows[0]
+    body = rows[1:]
+    compared = 0
+    distinctive = False
+    for j, cell in enumerate(first):
+        s = str(cell).strip()
+        if not s:
+            continue
+        col_sig = _column_majority_signature([r[j] for r in body if j < len(r)])
+        if col_sig is None:
+            continue
+        sig = _shape_signature(s)
+        if sig != col_sig:
+            return False
+        compared += 1
+        distinctive = distinctive or _signature_is_distinctive(sig)
+    return compared > 0 and distinctive
 
 
 def _is_header_shaped_cell(cell: str) -> bool:
@@ -327,6 +399,10 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
     # is a column-axis header (years, ordinals), not data.
     if has_data_values and _first_row_is_header_by_contrast(real_content_rows):
         has_data_values = False
+    # The converse: no cell matches a data pattern, but row 1 mirrors the
+    # body's cell shapes column-for-column (identifiers, ISO dates) — it is
+    # a continuation data row, not a header.
+    data_by_shape = not has_data_values and _first_row_is_data_by_shape(real_content_rows)
     has_url = any("http" in str(c).lower() for c in first_row)
 
     non_empty_vals = [str(c).strip().upper() for c in first_row if str(c).strip()]
@@ -354,6 +430,7 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
 
     if (
         has_data_values
+        or data_by_shape
         or has_url
         or is_sparse
         or has_repeated_values
@@ -405,10 +482,13 @@ def _grid_to_dataframe(table: Any, doc: Any) -> pd.DataFrame:
         ),
         [],
     )
+    # An upstream header flag on a row we classified as data (every cell
+    # data-shaped, or the row mirrors the body's shapes) must not be
+    # re-emitted at injection.
     df.attrs["demoted_numeric_header"] = bool(
         is_headerless
         and non_empty_cells
-        and all(_looks_like_data(cell) for cell in non_empty_cells)
+        and (data_by_shape or all(_looks_like_data(cell) for cell in non_empty_cells))
         and any(getattr(cell, "column_header", False) for cell in first_content_grid_row if cell)
     )
     return df

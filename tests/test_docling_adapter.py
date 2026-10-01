@@ -1126,3 +1126,87 @@ class TestHeaderOrphanWithDataShapedColumns:
         # not a uniform header axis.
         df = pd.DataFrame(columns=["$1,000", "2020", "Notes"])
         assert _detect_header_orphan(df, is_headerless=False, max_orphan_rows=2) is False
+
+
+# ---------------------------------------------------------------------------
+# All-text continuation rows: identifiers, ISO dates, status words. None of
+# the cells is numeric, yet the row is data — either by pattern (identifier,
+# ISO date) or because it mirrors the body's cell shapes column-for-column.
+# ---------------------------------------------------------------------------
+
+
+class TestShapeContrastHeaderDetection:
+    def test_identifier_and_iso_date_row_flags_headerless(self):
+        table = _mk_table(
+            [
+                ["R200", "Completed", "2009-03-10"],
+                ["R201", "Completed", "2009-03-11"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+        assert df.shape[0] == 2
+
+    def test_text_row_mirroring_body_shape_flags_headerless(self):
+        # No cell matches a data pattern (lowercase id with a trailing letter,
+        # names, words), but row 1 has the body's shape in every column and
+        # the identifier column is distinctive.
+        table = _mk_table(
+            [
+                ["p0001a", "Smith LLP", "Completed"],
+                ["p0002b", "Jane Doe", "Withdrawn"],
+                ["p0003c", "Acme Corp", "Pending"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is True
+        assert df.shape[0] == 3
+
+    def test_pure_word_table_keeps_header(self):
+        # No distinctive column → no claim; the row stays a header.
+        table = _mk_table(
+            [
+                ["Name", "Status"],
+                ["Smith", "Active"],
+                ["Jones", "Pending"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is False
+        assert list(df.columns) == ["Name", "Status"]
+
+    def test_header_over_identifier_body_stays_header(self):
+        table = _mk_table(
+            [
+                ["ID", "Status", "Date"],
+                ["R200", "Completed", "2009-03-10"],
+                ["R201", "Completed", "2009-03-11"],
+            ]
+        )
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is False
+        assert list(df.columns) == ["ID", "Status", "Date"]
+
+    def test_single_row_fragment_is_not_demoted_by_shape(self):
+        table = _mk_table([["Alpha", "Beta"]])
+        df = _grid_to_dataframe(table, doc=None)
+        assert df.attrs["is_headerless"] is False
+
+    def test_shape_demotion_overrides_upstream_header_flag(self):
+        # Docling flagged the continuation row as a column header; the shape
+        # rule demotes it and records that so injection never re-emits the flag.
+        grid = [
+            [SimpleNamespace(text=v, column_header=True) for v in ["p0001a", "Smith LLP"]],
+            [SimpleNamespace(text=v, column_header=False) for v in ["p0002b", "Jane Doe"]],
+        ]
+        df = _grid_to_dataframe(SimpleNamespace(data=SimpleNamespace(grid=grid)), doc=None)
+        assert df.attrs["is_headerless"] is True
+        assert df.attrs["demoted_numeric_header"] is True
+
+
+class TestHeaderOrphanWithIdentifierRows:
+    def test_identifier_row_is_data_not_orphan(self):
+        # Reprinted header + one identifier row is a headed data fragment, not
+        # an orphaned header block.
+        df = pd.DataFrame([["R200", "Completed"]], columns=["Subject Number", "Status"])
+        assert _detect_header_orphan(df, is_headerless=False, max_orphan_rows=2) is False

@@ -603,42 +603,82 @@ def align_dataframe_to_header(
     return df_copy
 
 
-def _build_orphan_merged_table(
-    header_idx: int, all_members: list[int], meta_by_idx: dict[int, TableMeta]
-) -> tuple[pd.DataFrame, set[int], list[str]]:
-    """Build merged table when the anchor is a header orphan."""
-    h_meta = meta_by_idx[header_idx]
+_AUTO_LABEL_RE = re.compile(r"^(column|unnamed)[_:]?\s*\d+$", re.IGNORECASE)
 
-    if h_meta.df.shape[0] == 0:
-        header_cells = [str(c) for c in h_meta.df.columns]
+
+def _promoted_first_row(m: TableMeta) -> list[str]:
+    """
+    The grid row an adapter promoted to ``df.columns`` for a headed fragment,
+    as cell text (auto-generated labels for blank cells map back to "").
+    """
+    return ["" if _AUTO_LABEL_RE.match(str(c).strip()) else str(c) for c in m.raw_columns]
+
+
+def _append_continuation(target: list[str], cc: dict, separator: str) -> None:
+    """Fold a continuation value into a row cell: fill if empty, else append."""
+    col = cc["col_idx"]
+    if col >= len(target):
+        return
+    current = target[col]
+    if current and not is_empty_value(current):
+        target[col] = current + separator + cc["value"]
     else:
-        header_cells = [str(x) for x in h_meta.df.iloc[0].tolist()]
+        target[col] = cc["value"]
+
+
+def _build_orphan_merged_table(
+    header_idx: int,
+    all_members: list[int],
+    meta_by_idx: dict[int, TableMeta],
+    cfg: MultiPageConfig,
+) -> tuple[pd.DataFrame, set[int], list[str]]:
+    """
+    Build merged table when the anchor is a header orphan.
+
+    Row conservation: every data row of every member is emitted exactly once.
+    The orphan's column labels are the header; its own body rows (short,
+    header-shaped — but data until proven otherwise) come first, followed by
+    each data member's rows. A headed member whose promoted first row shares
+    no vocabulary with the anchor header (Jaccard below ``header_sim_loose``)
+    was promoted from data, not reprinted from the header, so that row is
+    re-emitted ahead of its body. Members at or above the loose threshold
+    carry a reprinted header, which is dropped as in the generic path.
+    """
+    h_meta = meta_by_idx[header_idx]
+    header_cells = [str(c) for c in h_meta.df.columns]
 
     data_members = [m for m in all_members if m != header_idx]
     max_w = max([len(header_cells)] + [meta_by_idx[m].width for m in data_members])
     canonical_cols = header_cells + [f"col_{k}" for k in range(len(header_cells), max_w)]
 
-    rows = []
-    prev = h_meta
+    def _padded(vals: list[str]) -> list[str]:
+        vals = list(vals) + [""] * (max_w - len(vals))
+        return vals[:max_w]
+
+    rows = [_padded([str(v) for v in r.tolist()]) for _, r in h_meta.df.iterrows()]
 
     for m_idx in data_members:
         m = meta_by_idx[m_idx]
 
-        if m.continuation_content and not rows and prev.is_header_orphan:
+        if m.continuation_content and not rows:
+            # Nothing to fold into yet — the orphan is a bare header, so the
+            # continuation values belong to the (wrapped) header labels.
             for cc in m.continuation_content:
                 if cc["col_idx"] < len(canonical_cols):
                     canonical_cols[cc["col_idx"]] += " " + cc["value"]
-        elif m.continuation_content and rows:
+        elif m.continuation_content:
             for cc in m.continuation_content:
-                if cc["col_idx"] < max_w:
-                    rows[-1][cc["col_idx"]] += "\n" + cc["value"]
+                _append_continuation(rows[-1], cc, cfg.stitch_separator)
+
+        if (
+            not m.is_headerless
+            and m.raw_columns
+            and jaccard(m.header_tokens, h_meta.header_tokens) < cfg.header_sim_loose
+        ):
+            rows.append(_padded(_promoted_first_row(m)))
 
         for _, r in m.df.iterrows():
-            vals = [str(v) for v in r.tolist()]
-            vals += [""] * (max_w - len(vals))
-            rows.append(vals[:max_w])
-
-        prev = m
+            rows.append(_padded([str(v) for v in r.tolist()]))
 
     return (
         pd.DataFrame(rows, columns=canonical_cols),
@@ -686,9 +726,14 @@ def _build_generic_merged_table(
             if (min(m.pages or [0]) - max(prev.pages or [0])) <= cfg.max_page_gap:
                 for cc in m.continuation_content:
                     if cc["col_idx"] < merged_df.shape[1]:
-                        curr = str(merged_df.iloc[-1, cc["col_idx"]])
+                        raw = merged_df.iloc[-1, cc["col_idx"]]
+                        curr = "" if pd.isna(raw) else str(raw)
                         if curr and not is_empty_value(curr):
-                            merged_df.iloc[-1, cc["col_idx"]] += cfg.stitch_separator + cc["value"]
+                            merged_df.iloc[-1, cc["col_idx"]] = (
+                                curr + cfg.stitch_separator + cc["value"]
+                            )
+                        else:
+                            merged_df.iloc[-1, cc["col_idx"]] = cc["value"]
 
         aligned = align_dataframe_to_header(m.df, canonical_cols, m, cfg)
         warnings.extend(aligned.attrs.get("table_stitcher_warnings", []))
@@ -976,7 +1021,7 @@ def _build_logical_tables(state: _MergeState, cfg: MultiPageConfig) -> list[Logi
         )
         if header_orphan_idx is not None:
             df, pgs, build_warnings = _build_orphan_merged_table(
-                header_orphan_idx, normal_members, state.meta_by_idx
+                header_orphan_idx, normal_members, state.meta_by_idx, cfg
             )
         else:
             df, pgs, build_warnings = _build_generic_merged_table(

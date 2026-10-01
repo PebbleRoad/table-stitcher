@@ -22,6 +22,11 @@ the output. No real PDFs, no parser.
   `DoclingAdapter.inject()` flow (satellite pruning, provenance merging,
   pass-through on no-op).
 
+- `test_row_conservation.py` — builds synthetic multi-page `DoclingDocument`s
+  (identifiers, words, dates, money; with and without reprinted headers) and
+  asserts through the public `stitch_tables` API that every printed data row
+  comes out exactly once.
+
 ### Integration tests — `tests/integration/test_fixtures.py`
 
 Two lanes:

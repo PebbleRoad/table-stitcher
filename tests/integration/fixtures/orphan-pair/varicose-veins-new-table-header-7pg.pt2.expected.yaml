@@ -41,20 +41,20 @@ logical_tables:
   - 6
   - 7
   shape:
-  - 103
+  - 104
   - 5
   columns:
+  - Variables
+  - With varicose vein frequency
+  - Without varicose vein frequency
+  - col_3
+  - col_4
+  first_row:
   - Gender
   - ''
   - ''
-  - col_3
-  - col_4 0.547
-  first_row:
   - ''
-  - ''
-  - ''
-  - '47'
-  - ''
+  - '0.547'
   last_row:
   - Both
   - '1'

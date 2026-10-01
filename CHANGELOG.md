@@ -7,6 +7,33 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Silent row loss when merging all-text continuation fragments**
+  (`adapters/docling.py`, `merger.py`). A continuation fragment with no
+  numeric cell (identifiers such as `R200`, status words, ISO dates) had its
+  first data row promoted to column labels, was classed a header orphan, and
+  the orphan merge then dropped rows without any warning. Header detection
+  now recognises ISO dates and letter-digit identifiers as data, and demotes
+  a first row that mirrors the body's cell shapes column-for-column (a header
+  is structurally distinct from its body; pure-word tables are left alone).
+  The orphan merge now keeps the orphan's real column labels and every body
+  row of every member, and re-emits a headed member's promoted first row when
+  it shares no vocabulary with the anchor header. The same path previously
+  rebuilt a standalone small text table with its first row as the header and
+  an empty body.
+- **Continuation values folded into an empty cell were dropped**
+  (`merger.py`). A sparse first row on a continuation page is stitched into
+  the previous row; when the target cell was empty the value vanished. It now
+  fills the cell.
+
+### Added
+
+- `tests/test_row_conservation.py`: end-to-end property check that every
+  printed data row survives `stitch_tables` exactly once, across generated
+  fragment sets that vary cell kinds, widths, row counts, header reprinting
+  and page count.
+
 ## [0.5.1] — 2026-09-04
 
 ### Fixed

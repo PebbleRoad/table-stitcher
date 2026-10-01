@@ -139,7 +139,11 @@ class TableMeta:
     table), in which case the intervening-content guard is skipped for it.
     """
     demoted_numeric_header: bool = False
-    """Whether an upstream numeric header row was reclassified as data."""
+    """
+    Whether an upstream header flag on the first row was overridden because
+    the row is data: every cell data-shaped, or the row mirrors the body's
+    cell shapes column-for-column.
+    """
 
 
 @dataclass
@@ -179,7 +183,8 @@ class LogicalTable:
     """
     demoted_numeric_header: bool = False
     """
-    Whether the anchor fragment's numeric first grid row was classified as data
-    rather than a real header. Adapters use this to avoid re-emitting an
-    upstream header flag that the extraction phase deliberately demoted.
+    Whether the anchor fragment's first grid row was classified as data rather
+    than a real header despite an upstream header flag (numeric cells, or a row
+    shaped like the body). Adapters use this to avoid re-emitting an upstream
+    header flag that the extraction phase deliberately demoted.
     """

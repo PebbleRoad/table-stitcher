@@ -614,6 +614,62 @@ def _promoted_first_row(m: TableMeta) -> list[str]:
     return ["" if _AUTO_LABEL_RE.match(str(c).strip()) else str(c) for c in m.raw_columns]
 
 
+# Share of a promoted row's tokens that are novel against the anchor header
+# above which the row is data rather than a reprinted header.
+_NOVEL_ROW_RATIO = 0.5
+
+
+def _within_one_edit(a: str, b: str) -> bool:
+    """Levenshtein distance <= 1 (OCR drift: ``methoo``/``method``, ``jumber``/``number``)."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    i = 0
+    while i < len(a) and a[i] == b[i]:
+        i += 1
+    # One substitution, or one insertion into the longer string.
+    return a[i + 1 :] == b[i + 1 :] if len(a) == len(b) else a[i:] == b[i + 1 :]
+
+
+def _novel_token_ratio(row_tokens: set[str], header_tokens: set[str]) -> float:
+    """
+    Fraction of ``row_tokens`` with no counterpart in ``header_tokens``. A
+    counterpart is the same token or, for tokens of 3+ characters, one within
+    a single edit (OCR noise rarely invents whole words).
+    """
+    if not row_tokens:
+        return 0.0
+    novel = 0
+    for tok in row_tokens:
+        if tok in header_tokens:
+            continue
+        if len(tok) >= 3 and any(_within_one_edit(tok, h) for h in header_tokens):
+            continue
+        novel += 1
+    return novel / len(row_tokens)
+
+
+def _promoted_row_is_data(m: TableMeta, anchor_header_tokens: set[str]) -> bool:
+    """
+    True when a headed member's promoted first row carries content the anchor
+    header does not: a data row the adapter promoted (or a header glued to
+    the first record), not a reprint of the header. A reprinted header, even
+    OCR-noisy or with blank cells, draws almost all its tokens from the
+    header; a record draws most of its tokens from elsewhere.
+    """
+    if m.is_headerless or not m.raw_columns:
+        return False
+    row_tokens: set[str] = set()
+    for cell in _promoted_first_row(m):
+        row_tokens |= tokenize(normalize_col_name(cell))
+    if not row_tokens:
+        return False
+    return _novel_token_ratio(row_tokens, anchor_header_tokens) > _NOVEL_ROW_RATIO
+
+
 def _append_continuation(target: list[str], cc: dict, separator: str) -> None:
     """Fold a continuation value into a row cell: fill if empty, else append."""
     col = cc["col_idx"]
@@ -638,11 +694,11 @@ def _build_orphan_merged_table(
     Row conservation: every data row of every member is emitted exactly once.
     The orphan's column labels are the header; its own body rows (short,
     header-shaped — but data until proven otherwise) come first, followed by
-    each data member's rows. A headed member whose promoted first row shares
-    no vocabulary with the anchor header (Jaccard below ``header_sim_loose``)
+    each data member's rows. A headed member whose promoted first row is
+    mostly novel against the anchor header (see ``_promoted_row_is_data``)
     was promoted from data, not reprinted from the header, so that row is
-    re-emitted ahead of its body. Members at or above the loose threshold
-    carry a reprinted header, which is dropped as in the generic path.
+    re-emitted ahead of its body. Reprinted headers are dropped as in the
+    generic path.
     """
     h_meta = meta_by_idx[header_idx]
     header_cells = [str(c) for c in h_meta.df.columns]
@@ -670,11 +726,7 @@ def _build_orphan_merged_table(
             for cc in m.continuation_content:
                 _append_continuation(rows[-1], cc, cfg.stitch_separator)
 
-        if (
-            not m.is_headerless
-            and m.raw_columns
-            and jaccard(m.header_tokens, h_meta.header_tokens) < cfg.header_sim_loose
-        ):
+        if _promoted_row_is_data(m, h_meta.header_tokens):
             rows.append(_padded(_promoted_first_row(m)))
 
         for _, r in m.df.iterrows():
@@ -702,6 +754,34 @@ def _dedupe_labels(labels: list[str]) -> list[str]:
     return out
 
 
+def _prepend_continuation_row(df: pd.DataFrame, content: list[dict]) -> pd.DataFrame:
+    """Emit continuation content as a new leading row of ``df``."""
+    row = [""] * df.shape[1]
+    for cc in content:
+        if cc["col_idx"] < len(row):
+            row[cc["col_idx"]] = cc["value"]
+    return pd.concat([pd.DataFrame([row], columns=df.columns), df], ignore_index=True)
+
+
+def _fold_continuation(df: pd.DataFrame, content: list[dict], separator: str) -> pd.DataFrame:
+    """
+    Fold a continuation fragment's sparse first row into ``df``'s last row:
+    fill an empty target cell, append to a filled one. With no row to fold
+    into, the content becomes a row of its own rather than vanishing.
+    """
+    if df.shape[0] == 0:
+        return _prepend_continuation_row(df, content)
+    for cc in content:
+        if cc["col_idx"] < df.shape[1]:
+            raw = df.iloc[-1, cc["col_idx"]]
+            curr = "" if pd.isna(raw) else str(raw)
+            if curr and not is_empty_value(curr):
+                df.iloc[-1, cc["col_idx"]] = curr + separator + cc["value"]
+            else:
+                df.iloc[-1, cc["col_idx"]] = cc["value"]
+    return df
+
+
 def _build_generic_merged_table(
     members: list[int], meta_by_idx: dict[int, TableMeta], cfg: MultiPageConfig
 ) -> tuple[pd.DataFrame, set[int], list[str]]:
@@ -719,23 +799,29 @@ def _build_generic_merged_table(
     warnings: list[str] = []
     prev = base
 
+    # The anchor's own sparse first row (continuation content on the first
+    # fragment) has no previous row to fold into: it is the table's first
+    # data row.
+    if base.continuation_content:
+        merged_df = _prepend_continuation_row(merged_df, base.continuation_content)
+
     for idx in members[1:]:
         m = meta_by_idx[idx]
 
-        if m.continuation_content and merged_df.shape[0] > 0:
+        if m.continuation_content:
             if (min(m.pages or [0]) - max(prev.pages or [0])) <= cfg.max_page_gap:
-                for cc in m.continuation_content:
-                    if cc["col_idx"] < merged_df.shape[1]:
-                        raw = merged_df.iloc[-1, cc["col_idx"]]
-                        curr = "" if pd.isna(raw) else str(raw)
-                        if curr and not is_empty_value(curr):
-                            merged_df.iloc[-1, cc["col_idx"]] = (
-                                curr + cfg.stitch_separator + cc["value"]
-                            )
-                        else:
-                            merged_df.iloc[-1, cc["col_idx"]] = cc["value"]
+                merged_df = _fold_continuation(
+                    merged_df, m.continuation_content, cfg.stitch_separator
+                )
 
-        aligned = align_dataframe_to_header(m.df, canonical_cols, m, cfg)
+        member_df = m.df
+        if _promoted_row_is_data(m, base.header_tokens):
+            member_df = pd.concat(
+                [pd.DataFrame([_promoted_first_row(m)], columns=list(m.df.columns)), m.df],
+                ignore_index=True,
+            )
+
+        aligned = align_dataframe_to_header(member_df, canonical_cols, m, cfg)
         warnings.extend(aligned.attrs.get("table_stitcher_warnings", []))
         merged_df = pd.concat([merged_df, aligned], ignore_index=True).fillna("")
         canonical_cols = [str(c) for c in merged_df.columns]

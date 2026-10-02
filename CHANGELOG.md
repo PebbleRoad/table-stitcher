@@ -7,6 +7,29 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Fixed
+
+- **Block-style records dropped as "reprinted continuation headers"**
+  (`adapters/docling.py`). Records that repeat their labels on every record
+  (`Stock No 4087` / `Stock No 4088`) are word-identical to each other, and
+  Docling flags a label cell `column_header`, so the injection guard that
+  removes reprinted headers deleted them at Jaccard 1.0. The guard now also
+  requires that the row introduce no value token (digit-bearing token) absent
+  from the matched header row: a reprinted header reprints its values too.
+  Trade-off: a reprinted header whose digits OCR mangled is now kept as a
+  visible body row instead of silently dropped.
+- **A headed continuation's promoted first row was never re-emitted in the
+  generic merge** (`merger.py`). When a reader glues the column header onto
+  the first record of a page, that row becomes the fragment's column labels
+  and the record vanished. Both build paths now re-emit a headed member's
+  promoted first row when most of its tokens are novel against the anchor
+  header (single-edit OCR tolerance); reprinted headers, OCR-noisy or with
+  blank cells, are still dropped.
+- **An anchor's sparse first row was dropped** (`merger.py`). Continuation
+  content detected on the first fragment had no previous row to fold into and
+  was discarded; it is now the merged table's leading row. A continuation
+  folded into an empty frame likewise becomes a row instead of vanishing.
+
 ## [0.5.2] — 2026-10-02
 
 ### Fixed

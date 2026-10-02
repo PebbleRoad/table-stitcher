@@ -1210,3 +1210,113 @@ class TestHeaderOrphanWithIdentifierRows:
         # an orphaned header block.
         df = pd.DataFrame([["R200", "Completed"]], columns=["Subject Number", "Status"])
         assert _detect_header_orphan(df, is_headerless=False, max_orphan_rows=2) is False
+
+
+# ---------------------------------------------------------------------------
+# Reprinted-header guard must not eat block-style records: records that repeat
+# their labels (``Stock No 4087`` / ``Stock No 4088``) are word-identical to
+# each other, and Docling flags a label cell ``column_header``. A reprinted
+# header reprints its values too; a row with new value tokens is a record.
+# ---------------------------------------------------------------------------
+
+
+def _flagged_table(rows: list) -> TableData:
+    """rows: list of (cell_texts, header_flags) per grid row."""
+    grid, flat = [], []
+    for r, (texts, flags) in enumerate(rows):
+        row = [
+            TableCell(
+                text=t,
+                row_span=1,
+                col_span=1,
+                column_header=f,
+                row_header=False,
+                start_row_offset_idx=r,
+                end_row_offset_idx=r + 1,
+                start_col_offset_idx=c,
+                end_col_offset_idx=c + 1,
+            )
+            for c, (t, f) in enumerate(zip(texts, flags))
+        ]
+        grid.append(row)
+        flat.extend(row)
+    return TableData(num_rows=len(rows), num_cols=len(rows[0][0]), table_cells=flat, grid=grid)
+
+
+def _body_text(td: TableData) -> str:
+    body = [r for r in td.grid if not any(getattr(c, "column_header", False) for c in r if c)]
+    return " | ".join(str(c.text) for r in body for c in r if c)
+
+
+class TestReprintedHeaderValueTokens:
+    def _record(self, k: int) -> list:
+        return [
+            (
+                [str(k), "2014 CHEVROLET CRUZE", f"List Price: ${7000 + 500 * k:,}.00"],
+                [False, False, True],
+            ),
+            (
+                [
+                    f"VIN 1G1PC5SB{k:02d}E7444398",
+                    f"Stock No {4000 + k}",
+                    f"Listing Date 11/{k:02d}/2023",
+                ],
+                [False] * 3,
+            ),
+        ]
+
+    def test_block_records_with_flagged_label_cell_are_kept(self):
+        anchor = _flagged_table(self._record(1))
+        satellite = _flagged_table(self._record(2))
+        rows = [[c.text for c in r] for r in anchor.grid + satellite.grid]
+        merged_df = pd.DataFrame(rows, columns=["Column_0", "Column_1", "Column_2"])
+
+        td = _dataframe_to_docling_data(
+            merged_df, original_data=anchor, member_data=[anchor, satellite]
+        )
+
+        body = _body_text(td)
+        assert "List Price: $8,000.00" in body
+        assert "Stock No 4002" in body and "Stock No 4001" in body
+        # Header block (anchor row 0) + 3 body rows; the anchor's own first row
+        # is not duplicated into the body.
+        assert td.num_rows == 4
+
+    def test_exact_reprint_with_digits_is_still_dropped(self):
+        header = (["Cytokine (pg/mL)", "COVID-19", "p-Value"], [True, True, True])
+        anchor = _flagged_table([header, (["sIL2R", "491.8", "0.001"], [False] * 3)])
+        satellite = _flagged_table([header, (["IL-6", "12.3", "0.04"], [False] * 3)])
+        merged_df = pd.DataFrame(
+            [
+                ["sIL2R", "491.8", "0.001"],
+                ["Cytokine (pg/mL)", "COVID-19", "p-Value"],
+                ["IL-6", "12.3", "0.04"],
+            ],
+            columns=["Cytokine (pg/mL)", "COVID-19", "p-Value"],
+        )
+
+        td = _dataframe_to_docling_data(
+            merged_df, original_data=anchor, member_data=[anchor, satellite]
+        )
+
+        assert "Cytokine" not in _body_text(td)
+        assert td.num_rows == 3
+
+    def test_ocr_drifted_reprint_without_values_is_still_dropped(self):
+        anchor = _flagged_table(
+            [(["SECTION", "LIMIT (S$)"], [True, True]), (["Death", "100"], [False, False])]
+        )
+        satellite = _flagged_table(
+            [(["SECTION", "LIMIT ($$)"], [True, True]), (["Injury", "50"], [False, False])]
+        )
+        merged_df = pd.DataFrame(
+            [["Death", "100"], ["SECTION", "LIMIT ($$)"], ["Injury", "50"]],
+            columns=["SECTION", "LIMIT (S$)"],
+        )
+
+        td = _dataframe_to_docling_data(
+            merged_df, original_data=anchor, member_data=[anchor, satellite]
+        )
+
+        assert "($$)" not in _body_text(td)
+        assert td.num_rows == 3

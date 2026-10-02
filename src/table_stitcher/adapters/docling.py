@@ -623,6 +623,9 @@ def _reemit_body_row(
 _REPEATED_HEADER_SIM = 0.6
 
 
+_VALUE_TOKEN_RE = re.compile(r"[^\W_]+")
+
+
 def _row_token_set(cells: list[TableCell]) -> set:
     """Union of tokenized cell text for a grid row (duplicate span cells fold in)."""
     toks: set = set()
@@ -632,23 +635,51 @@ def _row_token_set(cells: list[TableCell]) -> set:
     return toks
 
 
-def _is_reprinted_header(orig_row: list[TableCell], header_sigs: list[set]) -> bool:
+def _row_value_tokens(cells: list[TableCell]) -> set:
+    """
+    Digit-bearing tokens of a grid row (``4087``, ``11/15/2023`` -> ``11``,
+    ``15``, ``2023``; ``1G1PC5SB3E7444398``). ``tokenize`` drops digits, which
+    is right for header vocabulary but blind to the values that tell one
+    record from the next.
+    """
+    vals: set = set()
+    for c in cells:
+        if c:
+            text = str(getattr(c, "text", "") or "").lower()
+            vals |= {t for t in _VALUE_TOKEN_RE.findall(text) if any(ch.isdigit() for ch in t)}
+    return vals
+
+
+def _header_signature(cells: list[TableCell]) -> tuple[set, set]:
+    """``(word_tokens, value_tokens)`` of a header-block row."""
+    return _row_token_set(cells), _row_value_tokens(cells)
+
+
+def _is_reprinted_header(orig_row: list[TableCell], header_sigs: list[tuple[set, set]]) -> bool:
     """True if ``orig_row`` is a reprinted continuation header to drop from the body.
 
     Docling reprints the column header at the top of each continuation page; on
     a multi-row header those rows survive the merge as bogus data rows. They are
-    dropped only when BOTH signals agree: Docling flagged the row
-    ``column_header`` AND it is a tokenized match for one of the reconstructed
-    header-block rows. The flag alone is unreliable — Docling over-flags
-    rowspan/continuation *data* rows as headers — so the content match guards
-    against deleting real data.
+    dropped only when ALL signals agree: Docling flagged the row
+    ``column_header``, its word tokens are a fuzzy match for one of the
+    reconstructed header-block rows, AND it introduces no value token (a
+    digit-bearing token) that the matched header row lacks. The flag alone is
+    unreliable — Docling over-flags rowspan/continuation *data* rows as
+    headers. The word match alone is blind to digits, so block-style records
+    that repeat their labels on every record (``Stock No 4087`` / ``Stock No
+    4088``) look identical to it. A reprinted header reprints its values too;
+    a row whose values differ from the header row's is a record.
     """
     if not any(getattr(c, "column_header", False) for c in orig_row if c):
         return False
     toks = _row_token_set(orig_row)
     if not toks:
         return False
-    return any(jaccard(toks, sig) >= _REPEATED_HEADER_SIM for sig in header_sigs)
+    vals = _row_value_tokens(orig_row)
+    return any(
+        jaccard(toks, words) >= _REPEATED_HEADER_SIM and vals <= values
+        for words, values in header_sigs
+    )
 
 
 def _dataframe_to_docling_data(
@@ -770,7 +801,7 @@ def _dataframe_to_docling_data(
     body_index = _index_member_rows(member_data) if member_data else {}
     # Tokenized signatures of the reconstructed header block, for dropping
     # reprinted continuation headers (see _is_reprinted_header).
-    header_sigs = [s for s in (_row_token_set(h) for h in orig_header_rows) if s]
+    header_sigs = [sig for sig in (_header_signature(h) for h in orig_header_rows) if sig[0]]
 
     emitted = 0
     for _, row in df.iterrows():

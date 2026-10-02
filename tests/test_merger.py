@@ -7,6 +7,7 @@ import pytest
 
 from table_stitcher.merger import (
     UnionFind,
+    _promoted_row_is_data,
     align_dataframe_to_header,
     is_numeric_like_colnames,
     jaccard,
@@ -1009,3 +1010,140 @@ class TestContinuationIntoEmptyCell:
         assert len(results) == 1
         assert list(results[0].df.columns) == ["Variables", "With", "Without"]
         assert results[0].df.values.tolist() == [["Gender", "", "0.547"], ["Male", "40", "51"]]
+
+
+# ---------------------------------------------------------------------------
+# Headed continuation members in the generic merge: a promoted first row that
+# is mostly novel against the anchor header is data (or a header glued to the
+# first record) and must be re-emitted; reprints, even OCR-noisy or partial,
+# are not.
+# ---------------------------------------------------------------------------
+
+_SERVICE_HEADER = ["DESCRIPTION", "NAME", "ADORESS", "EMAIL", "METHOD OF SERVICE"]
+
+
+def _headed(idx, columns, rows, page, **kw):
+    return _make_meta(idx=idx, df=pd.DataFrame(rows, columns=columns), start_page=page, **kw)
+
+
+class TestPromotedRowIsData:
+    def _anchor(self):
+        return _headed(
+            0, _SERVICE_HEADER, [["COUNSEL TO X", "X LLP", "1 MAIN ST", "A@X.COM", "Email"]], 1
+        )
+
+    def test_header_glued_to_first_record_is_data(self):
+        m = _headed(
+            1,
+            [
+                'DESCRIPTION COUNSEL TO CITY OF MESQUITE ("SECURED CREDITORS")',
+                "NAME GRIMES & LINEBARGER, LLP",
+                "ADDRESS",
+                "EMAIL",
+                "METHOD OF SERVICE",
+            ],
+            [["COUNSEL TO Y", "Y LLP", "", "B@Y.COM", "Email"]],
+            2,
+        )
+        assert _promoted_row_is_data(m, self._anchor().header_tokens) is True
+
+    def test_ocr_noisy_reprint_is_not_data(self):
+        m = _headed(
+            1,
+            ["DESCRIPTION", "NAME", "ADDRESS", "EMAIL", "METHOO OF SERVICE"],
+            [["a", "b", "c", "d", "e"]],
+            2,
+        )
+        assert _promoted_row_is_data(m, self._anchor().header_tokens) is False
+
+    def test_partial_reprint_with_blank_cells_is_not_data(self):
+        m = _headed(
+            1, ["Column_0", "NAME", "ADDRESS", "EMAIL", "Column_4"], [["a", "b", "c", "d", "e"]], 2
+        )
+        assert _promoted_row_is_data(m, self._anchor().header_tokens) is False
+
+    def test_clean_reprint_of_garbled_anchor_header_is_not_data(self):
+        anchor = _headed(
+            0, ["Biological process", "Jumber FD", "Column_2", "Genes"], [["x", "1", "", "g"]], 1
+        )
+        m = _headed(
+            1,
+            ["Biological process", "Number FDR of gene", "Column_2", "Genes"],
+            [["y", "2", "", "h"]],
+            2,
+        )
+        assert _promoted_row_is_data(m, anchor.header_tokens) is False
+
+    def test_headerless_member_never_reemits(self):
+        m = _headed(1, ["Column_0", "Column_1"], [["a", "b"]], 2, is_headerless=True)
+        assert _promoted_row_is_data(m, {"name", "status"}) is False
+
+
+class TestGenericPathRowConservation:
+    def test_glued_header_row_survives_loose_layout_merge(self):
+        anchor = _headed(
+            0,
+            _SERVICE_HEADER,
+            [["COUNSEL TO X", "X LLP", "1 MAIN ST", "A@X.COM", "Email"]],
+            1,
+            vert_bottom=0.9,
+        )
+        glued_cols = [
+            'DESCRIPTION COUNSEL TO CITY OF MESQUITE ("SECURED CREDITORS")',
+            "NAME GRIMES & LINEBARGER, LLP",
+            "ADDRESS",
+            "EMAIL",
+            "METHOD OF SERVICE",
+        ]
+        member = _headed(
+            1, glued_cols, [["COUNSEL TO Y", "Y LLP", "", "B@Y.COM", "Email"]], 2, vert_top=0.1
+        )
+        results = merge_multipage_tables([anchor, member], MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].merge_reason == "header_similarity_loose_layout"
+        assert results[0].df.values.tolist() == [
+            ["COUNSEL TO X", "X LLP", "1 MAIN ST", "A@X.COM", "Email"],
+            glued_cols,
+            ["COUNSEL TO Y", "Y LLP", "", "B@Y.COM", "Email"],
+        ]
+
+    def test_reprinted_header_member_is_not_duplicated(self):
+        anchor = _headed(
+            0, _SERVICE_HEADER, [["COUNSEL TO X", "X LLP", "1 MAIN ST", "A@X.COM", "Email"]], 1
+        )
+        member = _headed(1, _SERVICE_HEADER, [["COUNSEL TO Y", "Y LLP", "", "B@Y.COM", "Email"]], 2)
+        results = merge_multipage_tables([anchor, member], MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.shape[0] == 2
+
+    def test_anchor_sparse_first_row_is_kept_as_leading_row(self):
+        anchor = _headed(
+            0, ["Column_0", "Column_1", "Column_2"], [["1", "10", "first"]], 1, is_headerless=True
+        )
+        anchor.continuation_content = [{"col_idx": 2, "value": "List Price: $8,999.00"}]
+        member = _headed(
+            1,
+            ["Column_0", "Column_1", "Column_2"],
+            [["2", "20", "second"]],
+            2,
+            is_headerless=True,
+            vert_top=0.1,
+        )
+        anchor.vert_bottom = 0.9
+        results = merge_multipage_tables([anchor, member], MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.values.tolist() == [
+            ["", "", "List Price: $8,999.00"],
+            ["1", "10", "first"],
+            ["2", "20", "second"],
+        ]
+
+    def test_continuation_into_empty_anchor_becomes_a_row(self):
+        anchor = _headed(0, ["ID", "Amount", "Note"], [], 1)
+        member = _headed(
+            1, ["Column_0", "Column_1", "Column_2"], [["3", "30", "third"]], 2, is_headerless=True
+        )
+        member.continuation_content = [{"col_idx": 2, "value": "tail"}]
+        results = merge_multipage_tables([anchor, member], MultiPageConfig())
+        assert len(results) == 1
+        assert results[0].df.values.tolist() == [["", "", "tail"], ["3", "30", "third"]]

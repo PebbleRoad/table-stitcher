@@ -29,7 +29,11 @@ import table_stitcher
 
 
 def _make_doc(fragments):
-    """fragments: list of (page, rows, first_row_is_header)."""
+    """
+    fragments: list of (page, rows, first_row_is_header). A cell is a string,
+    or a ``(text, column_header)`` pair to set Docling's header flag on that
+    cell alone (block-style records get a flagged label cell).
+    """
     doc = DoclingDocument(name="row-conservation")
     for p in sorted({f[0] for f in fragments}):
         doc.add_page(page_no=p, size=Size(width=612.0, height=792.0))
@@ -37,7 +41,8 @@ def _make_doc(fragments):
         cells, grid = [], []
         for ri, row in enumerate(rows):
             line = []
-            for ci, text in enumerate(row):
+            for ci, cell in enumerate(row):
+                text, flag = cell if isinstance(cell, tuple) else (cell, False)
                 c = TableCell(
                     text=text,
                     row_span=1,
@@ -46,7 +51,7 @@ def _make_doc(fragments):
                     end_row_offset_idx=ri + 1,
                     start_col_offset_idx=ci,
                     end_col_offset_idx=ci + 1,
-                    column_header=(header and ri == 0),
+                    column_header=flag or (header and ri == 0),
                     bbox=BoundingBox(
                         l=40 + 120 * ci,
                         t=100 + 12 * ri,
@@ -77,7 +82,8 @@ def _make_doc(fragments):
 
 def _lost_and_duplicated(fragments):
     """Identifier column (col 0) of every printed data row, checked in the output."""
-    printed = [r[0] for _, rows, h in fragments for r in (rows[1:] if h else rows)]
+    text = lambda cell: cell[0] if isinstance(cell, tuple) else cell  # noqa: E731
+    printed = [text(r[0]) for _, rows, h in fragments for r in (rows[1:] if h else rows)]
     out = table_stitcher.stitch_tables(_make_doc(fragments))
     got = collections.Counter(row[0].text for t in out.tables for row in t.data.grid)
     lost = [x for x in printed if got[x] == 0]
@@ -170,3 +176,63 @@ def test_generated_fragments_conserve_rows(seed_block, caplog):
         if lost or dup:
             failures[seed] = {"lost": lost, "duplicated": dup}
     assert failures == {}
+
+
+# ---------------------------------------------------------------------------
+# Real-document shapes from the 0.5.2 report
+# ---------------------------------------------------------------------------
+
+
+def _block_record(k):
+    """Two-line vehicle listing; Docling flags the spanned price label as a header."""
+    return [
+        [str(k), "2014 CHEVROLET CRUZE 1LT 4D", (f"List Price: ${7000 + 500 * k:,}.00", True)],
+        [f"VIN 1G1PC5SB{k:02d}E7444398", f"Stock No {4000 + k}", f"Listing Date 11/{k:02d}/2023"],
+    ]
+
+
+def test_block_records_with_flagged_label_cells_lose_no_rows():
+    fragments = [
+        (1, [r for k in (1, 2, 3) for r in _block_record(k)], False),
+        (2, [r for k in (4, 5, 6) for r in _block_record(k)], False),
+    ]
+    lost, dup = _lost_and_duplicated(fragments)
+    assert lost == [] and dup == []
+
+
+def test_block_records_under_a_real_header_lose_no_rows():
+    header = ["#", "Vehicle", "Price"]
+    fragments = [
+        (1, [header] + [r for k in (1, 2) for r in _block_record(k)], True),
+        (2, [header] + [r for k in (3, 4) for r in _block_record(k)], True),
+        (3, [r for k in (5, 6) for r in _block_record(k)], False),
+    ]
+    lost, dup = _lost_and_duplicated(fragments)
+    assert lost == [] and dup == []
+
+
+def test_header_glued_to_first_record_loses_no_rows():
+    # Page 2's reader glued the column header onto the first record; that row
+    # is promoted to column labels and must still come out as data.
+    header = ["DESCRIPTION", "NAME", "EMAIL"]
+    fragments = [
+        (
+            1,
+            [header, ["COUNSEL TO X", "X LLP", "A@X.COM"], ["COUNSEL TO Y", "Y LLP", "B@Y.COM"]],
+            True,
+        ),
+        (
+            2,
+            [
+                [
+                    "DESCRIPTION COUNSEL TO CITY OF MESQUITE",
+                    "NAME GRIMES & LINEBARGER, LLP",
+                    "EMAIL",
+                ],
+                ["COUNSEL TO Z", "Z LLP", "C@Z.COM"],
+            ],
+            True,
+        ),
+    ]
+    lost, dup = _lost_and_duplicated(fragments)
+    assert lost == [] and dup == []

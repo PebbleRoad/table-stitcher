@@ -7,6 +7,8 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-10-02
+
 ### Fixed
 
 - **Block-style records dropped as "reprinted continuation headers"**
